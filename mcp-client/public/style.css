@@ -492,8 +492,6 @@ header p {
 
 .input-group label {
     flex-shrink: 0;
-    min-width: -webkit-fit-content;
-    min-width: fit-content;
     font-weight: 500;
     color: #333;
     font-size: 0.85em;
