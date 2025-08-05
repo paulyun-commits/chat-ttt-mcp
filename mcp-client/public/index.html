@@ -29,10 +29,15 @@
         
         <div class="chat-section">
             <div class="chat-header">
-                <h3>🤖 Chat & Assistant</h3>
-                <div class="chat-help">
-                    Tell me where to play, ask for help, or just chat about strategy
+                <h3>🤖 Chat & Assistant
+                <div class="ai-autoplay-container">
+                    <label class="ai-autoplay-label">
+                        <input type="checkbox" id="aiAutoplayToggle" class="ai-autoplay-checkbox">
+                        <span class="ai-autoplay-slider"></span>
+                        <span class="ai-autoplay-text">Auto-Play</span>
+                    </label>
                 </div>
+                </h3>
             </div>
             <div class="chat-messages" id="chatMessages"></div>
             <div class="chat-input-container">
@@ -41,20 +46,49 @@
             </div>
         </div>
         
-        <div class="mcp-status">
-            <div class="status-indicator" id="mcpStatus">
-                <span class="dot"></span>
-                <span>MCP Server: <span id="mcpStatusText">Checking...</span></span>
+        <div class="status-section">
+            <!-- Services Status and Settings -->
+            <div class="services-panel collapsed" id="servicesPanel">
+                <div class="services-header" id="servicesHeader">
+                    <div class="status-indicator" id="ollamaStatus">
+                        <span class="dot"></span>
+                        <span>🌐 Ollama: <span id="ollamaStatusText">Checking...</span></span>
+                    </div>
+                    <div class="status-indicator" id="mcpStatus">
+                        <span class="dot"></span>
+                        <span>🔧 MCP: <span id="mcpStatusText">Checking...</span></span>
+                    </div>
+                    <button class="services-toggle" id="servicesToggle" title="Show/Hide Settings">
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                </div>
+                <div class="services-content" id="servicesContent">
+                    <div class="settings-container">
+                        <div class="input-group">
+                            <label for="ollamaServerInput">🌐</label>
+                            <input type="url" id="ollamaServerInput" class="server-input" placeholder="http://127.0.0.1:11434" title="Enter Ollama server base URL">
+                            <button id="updateOllamaBtn" class="btn-update" title="Update Ollama server URL">✓</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="modelSelect">🤖</label>
+                            <select id="modelSelect" class="model-dropdown">
+                                <option value="">Loading models...</option>
+                            </select>
+                            <button id="refreshModelsBtn" class="btn-refresh" title="Refresh model list">🔄</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="mcpServerInput">🔧</label>
+                            <input type="url" id="mcpServerInput" class="server-input" placeholder="http://127.0.0.1:8000" title="Enter MCP server base URL">
+                            <button id="updateMcpBtn" class="btn-update" title="Update MCP server URL">✓</button>
+                        </div>
+                        <div class="resources-section">
+                            <h3>📚 Available Resources</h3>
+                            <div class="resources-list" id="resourcesList"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        
-        <div class="resources-panel" id="resourcesPanel">
-            <div class="resources-header">
-                <h3>📚 Available Resources</h3>
-            </div>
-            <div class="resources-list" id="resourcesList"></div>
-        </div>
-    </div>
 
     <script src="script.js"></script>
 </body>
