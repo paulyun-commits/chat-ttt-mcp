@@ -222,46 +222,40 @@ function setupEventListeners() {
 
 // Ollama
 
-async function pickToolToUse(message) {
+async function aiChooseTool(message) {
     try {
-        // First get available MCP tools and resources
-        const [mcpCapabilities, mcpResources] = await Promise.all([
-            getMCPCapabilities(),
-            getMCPResources()
+        const [mcpTools, mcpResources] = await Promise.all([
+            getMCPCapabilities() || [],
+            getMCPResources() || []
         ]);
-        const availableTools = mcpCapabilities.tools || [];
         
-        const systemPrompt = `
-You are a smart assistant for a ChatTTT game that can both select tools and have conversations.
-Your job is to analyze the user's request and either recommend a tool or provide a conversational response.
+        const prompt = `
+You are a smart assistant for a tic-tac-toe game that can select tools.
+Analyze the user's request and pick the most appropriate tool if there is one.
+Be picky and only select a tool if it really sounds like that's what the user wants.
+If the user message is just a number, use the 'play_move' tool.
 
-Current game state:
-Board: ${JSON.stringify(gameState.board)} (positions 1-9, null = empty, X/O = taken)
-Current Player: ${gameState.player}
-Game Over: ${gameState.gameOver}
-Winner: ${gameState.winner || 'none'}
+AVAILABLE TOOLS:
+${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
-Board layout:
- 1 2 3 
- 4 5 6 
- 7 8 9 
+AVAILABLE TOOLS USAGE:
+- best_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
+- random_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
+- play_move: {"board": ${JSON.stringify(gameState.board)}, "position": [position_number], "player": "${gameState.player}"}
+- new_game: {}
 
-Current board visualization:
+CURRENT BOARD STATE:
+- Is Game Over? ${gameState.gameOver}
+- Winner: ${gameState.winner || 'none'}
+- Current Player: ${gameState.player}
+- Board Layout (X & O - played squares, 1-9 - valid moves):
 ${visualizeBoard(gameState.board)}
 
-Previous conversation in this game:
+CHAT HISTORY:
+The last one is the current message from the user:
 ${formatChatHistoryForPrompt()}
 
-Available Tools:
-${availableTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
-
-Available Resources:
-${mcpResources.map(resource => `- ${resource.name}: ${resource.description} (${resource.mimeType})`).join('\n')}
-
-User request: "${message}"
-
-If the user asks about resources, guides, help documentation, or strategy, mention the available resources in your response.
-
+INSTRUCTIONS:
 Analyze the user's request and respond with exactly one of these formats:
 
 1. If a tool should be used:
@@ -275,17 +269,9 @@ ARGS: {}
 REASON: Brief explanation why no tool is needed
 RESPONSE: Your conversational response to the user
 
-For game tools that need board state, use these argument structures:
-- best_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- random_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- play_move: {"board": ${JSON.stringify(gameState.board)}, "position": [position_number], "player": "${gameState.player}"}
-- new_game: {}
-
-For conversational responses, provide helpful information about the game state, strategy tips, or general chat.
-If the user asks about help, guides, or strategy, mention the available resources.
-Remember the conversation history and respond appropriately to follow-up questions or references to previous messages.
+Answer this prompt: "${message}"
 `;
-        // Call Ollama API directly
+        console.log("CHOOSE TOOL PROMPT:", prompt)
         const ollamaResponse = await fetch(`${appConfig.ollamaHost}/api/generate`, {
             method: 'POST',
             headers: {
@@ -293,7 +279,7 @@ Remember the conversation history and respond appropriately to follow-up questio
             },
             body: JSON.stringify({
                 model: appConfig.ollamaModel,
-                prompt: `${systemPrompt}\n\nAssistant:`,
+                prompt: `${prompt}\n\nAssistant:`,
                 stream: false,
                 options: {
                     temperature: CONFIG.ollama.temperature,
@@ -302,63 +288,51 @@ Remember the conversation history and respond appropriately to follow-up questio
             })
         });
         
-        if (ollamaResponse.ok) {
-            const data = await ollamaResponse.json();
-            const aiResponse = data.response?.trim() || '';
-            console.log('Ollama response:');
-            console.log(aiResponse);
-            
-            const toolMatch = aiResponse.match(/TOOL:\s*(\w+)/);
-            const argsMatch = aiResponse.match(/ARGS:\s*(\{.*?\})/s);
-            const reasonMatch = aiResponse.match(/REASON:\s*(.+?)(?=\n|$)/s);
-            const responseMatch = aiResponse.match(/RESPONSE:\s*(.+)/s);
-            
-            const recommendedTool = toolMatch ? toolMatch[1] : 'none';
-            const reason = reasonMatch ? reasonMatch[1].trim() : 'No specific reason provided';
-            const conversationalResponse = responseMatch ? responseMatch[1].trim() : null;
-            
-            let arguments = {};
-            if (argsMatch) {
-                try {
-                    arguments = JSON.parse(argsMatch[1]);
-                } catch (e) {
-                    console.warn('Failed to parse tool arguments:', e.message);
-                    arguments = {};
-                }
-            }
-            
-            // Validate the recommended tool exists
-            const isValidTool = recommendedTool === 'none' || 
-                              availableTools.some(tool => tool.name === recommendedTool);
-            
-            return {
-                tool: isValidTool ? recommendedTool : 'none',
-                reason: reason,
-                arguments: isValidTool ? arguments : {},
-                conversationalResponse: conversationalResponse,
-                availableTools: availableTools.map(t => t.name),
-                availableResources: mcpResources,
-                analysis: aiResponse
-            };
-        } else {
+        if (!ollamaResponse.ok) {
             console.error('Ollama API error:', ollamaResponse.status, ollamaResponse.statusText);
             return {
                 tool: 'none',
                 reason: `Ollama API error: ${ollamaResponse.status}`,
                 arguments: {},
-                conversationalResponse: "Sorry, I couldn't process your message right now. Please try again.",
+                response: "Sorry, I couldn't process your message right now. Please try again.",
                 availableTools: [],
                 availableResources: [],
                 analysis: ''
             };
         }
-    } catch (error) {
+
+        const data = await ollamaResponse.json();
+        const aiResponse = data.response?.trim() || '';
+        console.log('Ollama response:');
+        console.log(aiResponse);
+        
+        const toolMatch = aiResponse.match(/TOOL:\s*(\w+)/);
+        const argsMatch = aiResponse.match(/ARGS:\s*(\{.*?\})/s);
+        const reasonMatch = aiResponse.match(/REASON:\s*(.+?)(?=\n|$)/s);
+        const responseMatch = aiResponse.match(/RESPONSE:\s*(.+)/s);
+        
+        const tool = toolMatch ? toolMatch[1] : 'none';
+        const reason = reasonMatch ? reasonMatch[1].trim() : 'No specific reason provided';
+        const response = responseMatch ? responseMatch[1].trim() : null;
+        const arguments = JSON.parse(argsMatch[1]);
+        
+        return {
+            tool: tool || 'none',
+            reason: reason,
+            arguments: arguments || {},
+            response: response,
+            availableTools: mcpTools.tools.map(t => t.name),
+            availableResources: mcpResources,
+            analysis: aiResponse
+        };
+    }
+    catch (error) {
         console.error('Error determining tool:', error);
         return {
             tool: 'none',
             reason: 'Failed to analyze request: ' + error.message,
             arguments: {},
-            conversationalResponse: "Sorry, I couldn't process your message right now. Please try again.",
+            response: "Sorry, I couldn't process your message right now. Please try again.",
             availableTools: [],
             availableResources: [],
             analysis: ''
@@ -366,22 +340,70 @@ Remember the conversation history and respond appropriately to follow-up questio
     }
 }
 
-async function sendChatMessage(message, providedResponse = null) {
+async function aiSendMessage(message, args) {
     addOpponentMessage(GAME_MESSAGES.THINKING);
     
     try {
-        let responseText = providedResponse;
-        
-        // If no response provided, use a fallback approach
+        let responseText = args.response;
+
         if (!responseText) {
-            responseText = "I'm here to help with your ChatTTT game! You can click on the board, tell me where to play, ask for move suggestions, or start a new game. What would you like to do?";
+            const [mcpTools, mcpResources] = await Promise.all([
+                getMCPCapabilities() || [],
+                getMCPResources() || []
+            ]);
+
+            const prompt = `
+You are a smart assistant for a tic-tac-toe game that can have conversations.
+Provide helpful information about the game state, strategy tips, or general chat.
+
+AVAILABLE RESOURCES:
+${mcpResources.resources.map(resource => `- ${resource.name}: ${resource.description} (${resource.mimeType})`).join('\n')}
+
+CURRENT BOARD STATE:
+- Is Game Over? ${gameState.gameOver}
+- Winner: ${gameState.winner || 'none'}
+- Current Player: ${gameState.player}
+- Board Layout (X & O - played squares, 1-9 - valid moves):
+${visualizeBoard(gameState.board)}
+
+CHAT HISTORY:
+The last one is the current message from the user:
+${formatChatHistoryForPrompt()}
+
+INSTRUCTIONS:
+Analyze the user's request and respond with helpful information.
+
+Answer this prompt: "${message}"
+`;
+            console.log("SEND MESSAGE PROMPT:", prompt)
+            const ollamaResponse = await fetch(`${appConfig.ollamaHost}/api/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: appConfig.ollamaModel,
+                    prompt: `${prompt}\n\nAssistant:`,
+                    stream: false,
+                    options: {
+                        temperature: CONFIG.ollama.temperature,
+                        max_tokens: CONFIG.ollama.maxTokens
+                    }
+                })
+            });
+
+            if (!ollamaResponse.ok) {
+                responseText = "I'm at a loss of words.";
+            }
+
+            const data = await ollamaResponse.json();
+            responseText = data.response?.trim();
         }
         
         removeThinkingMessage();
         addOpponentMessage(responseText);
-        
-    } catch (error) {
-        console.error('Error sending chat message:', error);
+    }
+    catch (error) {
         removeThinkingMessage();
         addOpponentMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
     }
@@ -396,18 +418,18 @@ async function checkOllamaStatus() {
             }
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            updateOllamaStatus('connected', { version: data.version });
-            
-            // Load models if not already loaded and Ollama is connected
-            if (availableModels.length === 0 && !isLoadingModels) {
-                await loadAvailableModels();
-            }
-        } else {
+        if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-    } catch (error) {
+
+        const data = await response.json();
+        updateOllamaStatus('connected', { version: data.version });
+        
+        if (availableModels.length === 0 && !isLoadingModels) {
+            await loadAvailableModels();
+        }
+    }
+    catch (error) {
         console.error('Error checking Ollama status:', error);
         updateOllamaStatus('error', { error: error.message });
     }
@@ -436,12 +458,11 @@ async function callMCPTool(toolName, args) {
             })
         });
         
-        if (response.ok) {
-            return await response.json();
-        } else {
-            throw new Error(`MCP API error: ${response.status}`);
-        }
-    } catch (error) {
+        if (response.ok) return await response.json();
+
+        throw new Error(`MCP API error: ${response.status}`);
+    }
+    catch (error) {
         console.error(`MCP tool ${toolName} call failed:`, error.message);
         throw error;
     }
@@ -452,19 +473,20 @@ async function getMCPCapabilities() {
         const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
         const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/tools`);
         
-        if (infoResponse.ok && toolsResponse.ok) {
-            const infoData = await infoResponse.json();
-            const toolsData = await toolsResponse.json();
-            
-            return {
-                status: 'connected',
-                serverInfo: infoData,
-                tools: toolsData.tools || []
-            };
-        } else {
+        if (!infoResponse.ok || !toolsResponse.ok) {
             throw new Error(`HTTP ${infoResponse.status || toolsResponse.status}`);
         }
-    } catch (error) {
+
+        const infoData = await infoResponse.json();
+        const toolsData = await toolsResponse.json();
+
+        return {
+            status: 'connected',
+            serverInfo: infoData,
+            tools: toolsData.tools || []
+        };
+    }
+    catch (error) {
         console.error('Error getting MCP capabilities:', error);
         return { 
             tools: [], 
@@ -476,22 +498,36 @@ async function getMCPCapabilities() {
 
 async function getMCPResources() {
     try {
-        const response = await fetch(`${appConfig.mcpServerUrl}/resources`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.resources || [];
+        const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
+        const resourcesResponse = await fetch(`${appConfig.mcpServerUrl}/resources`);
+
+        if (!infoResponse.ok || !resourcesResponse.ok) {
+            throw new Error(`HTTP ${infoResponse.status || resourcesResponse.status}`);
         }
-        return [];
-    } catch (error) {
+
+        const infoData = await infoResponse.json();
+        const resourcesData = await resourcesResponse.json();
+
+        return {
+            status: 'connected',
+            serverInfo: infoData,
+            resources: resourcesData.resources || []
+        };
+    }
+    catch (error) {
         console.error('Error getting MCP resources:', error);
-        return [];
+        return { 
+            tools: [], 
+            status: 'error',
+            error: error.message
+        };
     }
 }
 
 async function loadMCPResources() {
     try {
         const resources = await getMCPResources();
-        updateResourcesPanel(resources);
+        updateResourcesPanel(resources.resources);
         restoreServicesPanelState();
     }
     catch (error) {
@@ -507,8 +543,9 @@ async function checkMCPStatus() {
             getMCPCapabilities(),
             getMCPResources()
         ]);
-        updateMCPStatus(capabilities.status, { ...capabilities, resources });
-    } catch (error) {
+        updateMCPStatus(capabilities.status, { ...capabilities, ...resources.resources });
+    }
+    catch (error) {
         console.error('Error checking MCP status:', error);
         updateMCPStatus('error', { error: error.message });
     }
@@ -526,13 +563,26 @@ function handleChatSubmit() {
 }
 
 async function handleNewGameRequest() {
-    const movesMade = gameState.board.filter(cell => cell !== null).length;
-    if (gameState.gameOver || movesMade == 0) return resetGame();
+    const confirmed = confirm("Start new game? Current game will be lost.");
+    if (!confirmed) {
+        addOpponentMessage("New game cancelled, please continue.)");
+        return;
+    }
 
-    const confirmed = confirm("Game in progress. Start new game? Current game will be lost.");
-    if (confirmed) return resetGame();
-
-    addGameMessage("New game cancelled. Continuing current game.");
+    try {
+        const toolResult = await callMCPTool('new_game', {});
+        
+        if (toolResult && !toolResult.isError) {
+            resetGame();
+            addOpponentMessage("New game started! Your turn (X)");
+            return;
+        }
+        
+        addOpponentMessage("Sorry, I couldn't reset the game.");
+    }
+    catch (error) {
+        addOpponentMessage("An error occured while resetting the game.");
+    }
 }
 
 async function handleBestMoveRequest(args) {
@@ -559,20 +609,18 @@ async function handleBestMoveRequest(args) {
             if (positionMatch) {
                 const bestMove = parseInt(positionMatch[1]);
                 const success = makeMove(bestMove, gameState.player);
+                
                 if (success) {
                     addOpponentMessage(`The best move is position ${bestMove}!`);
-                } else {
-                    addOpponentMessage("Sorry, I couldn't make that best move.");
+                    return;
                 }
-            } else {
-                addOpponentMessage("Sorry, I couldn't determine the best move right now.");
             }
-        } else {
-            addOpponentMessage("Sorry, I couldn't get the best move right now.");
         }
-    } catch (error) {
-        console.error('Error getting best move:', error);
-        addOpponentMessage("Sorry, I couldn't get the best move right now.");
+
+        addOpponentMessage("Sorry, I couldn't make the best move.");
+    }
+    catch (error) {
+        addOpponentMessage("An error occured while making the best move.");
     }
 }
 
@@ -585,7 +633,6 @@ async function handleRandomMoveRequest(args) {
     updateGameStatus(GAME_MESSAGES.GETTING_RANDOM_MOVE);
     
     try {
-        // Always call the MCP server to get the random move
         const toolResult = await callMCPTool('random_move', {
             board: gameState.board,
             player: gameState.player,
@@ -602,18 +649,15 @@ async function handleRandomMoveRequest(args) {
                 const success = makeMove(randomMove, gameState.player);
                 if (success) {
                     addOpponentMessage(`Random move: position ${randomMove}!`);
-                } else {
-                    addOpponentMessage("Sorry, I couldn't make that random move.");
+                    return;
                 }
-            } else {
-                addOpponentMessage("Sorry, I couldn't get a random move right now.");
             }
-        } else {
-            addOpponentMessage("Sorry, I couldn't get a random move right now.");
         }
-    } catch (error) {
-        console.error('Error getting random move:', error);
-        addOpponentMessage("Sorry, I couldn't get a random move right now.");
+
+        addOpponentMessage("Sorry, I couldn't make a random move.");
+    }
+    catch (error) {
+        addOpponentMessage("An error occured while making a random move.");
     }
 }
 
@@ -623,42 +667,40 @@ async function handlePlayMoveRequest(args) {
         return;
     }
     
-    // Extract position from args or parse from user input
-    let position = null;
-    if (args && args.position !== undefined) {
-        // If position is provided in args, use it
-        position = Array.isArray(args.position) ? args.position[0] : args.position;
-    }
-    
-    if (position === null || position < 1 || position > 9) {
-        addOpponentMessage("Invalid position specified. Please choose a position between 1-9.");
-        return;
-    }
-    
     updateGameStatus(GAME_MESSAGES.PLAYING_MOVE);
     
     try {
-        const success = makeMove(position, gameState.player);
-        if (success) {
-            addOpponentMessage(`Played move at position ${position}!`);
-        } else {
-            addOpponentMessage(`Sorry, I couldn't make that move at position ${position}.`);
+        const toolResult = await callMCPTool('play_move', {
+            board: gameState.board,
+            player: gameState.player,
+            position: args.position[0]
+        });
+        
+        if (toolResult && !toolResult.isError) {
+            const success = makeMove(args.position[0], gameState.player);
+            if (success) {
+                addOpponentMessage(`Placed move: position ${args.position}!`);
+                return;
+            }
+
+            if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI) {
+                setTimeout(() => {
+                    requestAIMove();
+                }, 1000);
+            }
         }
-    } catch (error) {
-        console.error('Error making play move:', error);
-        addOpponentMessage("Sorry, I couldn't make that move.");
+
+        addOpponentMessage(`Sorry, I couldn't play position ${args.position[0]}.`);
+    }
+    catch (error) {
+        addOpponentMessage(`Sorry, I couldn't play position ${args.position[0]}.`);
     }
 }
 
 async function handleOllamaServerUpdate() {
     const newServerUrl = ollamaServerInput.value.trim();
-    
-    if (!newServerUrl) {
-        addGameMessage('❌ Please enter a valid Ollama server URL');
-        return;
-    }
-    
-    // Validate URL format
+    if (!newServerUrl || newServerUrl === appConfig.ollamaHost) return;
+
     try {
         new URL(newServerUrl);
     } catch (e) {
@@ -666,70 +708,38 @@ async function handleOllamaServerUpdate() {
         return;
     }
     
-    if (newServerUrl !== appConfig.ollamaHost) {
-        // Update configuration
-        appConfig.ollamaHost = newServerUrl;
-        
-        // Add system message about server change
-        addGameMessage(`🌐 Ollama server updated to: ${newServerUrl}`);
-        
-        console.log('Ollama server changed to:', newServerUrl);
-        
-        // Re-check Ollama status and reload models
-        await checkOllamaStatus();
-        await loadAvailableModels();
-    }
+    appConfig.ollamaHost = newServerUrl;
+    addGameMessage(`🌐 Ollama server updated to: ${newServerUrl}`);
+    await checkOllamaStatus();
+    await loadAvailableModels();
 }
 
 async function handleMcpServerUpdate() {
     const newServerUrl = mcpServerInput.value.trim();
-    
-    if (!newServerUrl) {
-        addSystemMessage('❌ Please enter a valid MCP server URL');
-        return;
-    }
-    
-    // Validate URL format
+    if (!newServerUrl || newServerUrl === appConfig.mcpServerUrl) return;
+
     try {
         new URL(newServerUrl);
-    } catch (e) {
+    }
+    catch (e) {
         addSystemMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://127.0.0.1:8000)');
         return;
     }
-    
-    if (newServerUrl !== appConfig.mcpServerUrl) {
-        // Update configuration
-        appConfig.mcpServerUrl = newServerUrl;
-        
-        // Save to localStorage for persistence
-        localStorage.setItem('mcpServerUrl', newServerUrl);
-        
-        // Add system message about server change
-        addSystemMessage(`🔧 MCP server updated to: ${newServerUrl}`);
-        
-        console.log('MCP server changed to:', newServerUrl);
-        
-        // Re-check MCP status and reload resources
-        await checkMCPStatus();
-        await loadMCPResources();
-    }
+
+    appConfig.mcpServerUrl = newServerUrl;
+    addSystemMessage(`🔧 MCP server updated to: ${newServerUrl}`);
+    await checkMCPStatus();
+    await loadMCPResources();
 }
 
 function handleModelChange() {
     const selectedModel = modelSelect.value;
-    
-    if (selectedModel && selectedModel !== appConfig.ollamaModel) {
-        // Update configuration
-        appConfig.ollamaModel = selectedModel;
-        
-        // Update Ollama status to reflect new model
-        updateOllamaStatus('connected', { model: selectedModel });
-        
-        // Add system message about model change
-        addGameMessage(`🤖 Switched to model: ${selectedModel}`);
-        
-        console.log('Model changed to:', selectedModel);
-    }
+    if (!selectedModel || selectedModel === appConfig.ollamaModel) return;
+
+    appConfig.ollamaModel = selectedModel;
+    updateOllamaStatus('connected', { model: selectedModel });
+    addGameMessage(`🤖 Switched to model: ${selectedModel}`);
+    console.log('Model changed to:', selectedModel);
 }
 
 // Game
@@ -913,7 +923,7 @@ async function processChatInput(input) {
     // Parse the user input to determine which tool to use
     console.log('Processing user prompt:');
     console.log(input);
-    const result = await pickToolToUse(input);
+    const result = await aiChooseTool(input);
     console.log('Tool selection result:');
     console.log(result);
     
@@ -940,7 +950,7 @@ async function processChatInput(input) {
             
         case 'none':
         default:
-            await sendChatMessage(input, result.conversationalResponse);
+            await aiSendMessage(input, result.arguments);
             break;
     }
 }
