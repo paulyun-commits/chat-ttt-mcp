@@ -1,48 +1,43 @@
 const CONFIG = {
-    // Server Configuration
     server: {
         mcpServerUrl: 'http://127.0.0.1:8000',
         ollamaHost: 'http://omega:11434',
         ollamaModel: 'llama3.2:latest'
     },
     
-    // Ollama API Settings
     ollama: {
-        temperature: 0.3,
-        maxTokens: 4096,
-        timeout: 15000
+        temperature: 0.2,        // Lower for more consistent tool selection and game logic
+        maxTokens: 2048,         // Reduced from 4096 - sufficient for most responses, faster generation
+        timeout: 20000,          // Increased from 15000 - allows for complex reasoning
+        top_p: 0.9,              // Nucleus sampling for response diversity
+        repeat_penalty: 1.15,    // Reduces repetitive phrases in chat
+        presence_penalty: 0.6,   // Encourages topic variety
+        frequency_penalty: 0.3,  // Mild penalty for overused tokens
+        stop: ["Human:", "User:", "Assistant:"], // Stop sequences to prevent role confusion
+        num_ctx: 4096,           // Context window size for conversation memory
+        num_predict: 512,        // Max tokens to predict per request (overridden by maxTokens)
+        seed: -1,                // Random seed for variety (-1 = random)
+        mirostat: 0,             // Use standard sampling (0 = off, 1 = Mirostat v1, 2 = Mirostat v2)
+        mirostat_tau: 5.0,       // Target entropy for Mirostat (if enabled)
+        mirostat_eta: 0.1        // Learning rate for Mirostat (if enabled)
     },
     
-    // MCP Tool Settings
     mcp: {
         timeout: 10000,
         statusCheckInterval: 300000, // 5 minutes instead of 30 seconds
-        autoRefreshResources: true,
-        enablePeriodicStatusCheck: false // Disable automatic polling by default
+        autoRefreshResources: true
     },
     
-    // Chat Settings
     chat: {
-        maxHistoryMessages: 20,
-        enableUpArrowRepeat: true,
-        showTimestamps: true,
-        showSystemMessages: true
+        maxHistoryMessages: 20
     },
     
-    // Game Settings
     game: {
-        autoSwitchPlayer: true,
-        confirmNewGameInProgress: true,
-        showMoveNumbers: true,
-        enableKeyboardShortcuts: true,
         aiAutoPlay: false
     },
     
-    // UI Settings
     ui: {
-        showMCPStatus: true,
-        showOllamaStatus: true,
-        showToolSelectionReason: true
+        // TODO: Add UI settings if needed
     }
 };
 
@@ -52,23 +47,17 @@ const PLAYERS = {
 };
 
 const GAME_MESSAGES = {
-    WELCOME: "Welcome to ChatTTT! Click a cell or tell me where you'd like to play. I can also help with strategy or make suggestions.",
-    GAME_OVER_NEW: "The game is over! Let me know if you'd like to start a new game.",
-    POSITION_TAKEN: (pos) => `Position ${pos} is already taken!`,
-    NOT_YOUR_TURN: "It's not your turn right now.",
-    INVALID_POSITION: "That's not a valid position. Please choose a spot from 1-9.",
-    GAME_OVER_START_NEW: "Game is over! Would you like to start again?",
-    NEW_GAME_STARTED: 'New game started! Your turn (X)',
-    CANT_PROCESS_MESSAGE: "Sorry, I couldn't understand that. Could you try asking differently?",
+    WELCOME: "Welcome to ChatTTT! Click a cell or tell me where to play.",
+    GAME_OVER_NEW: "Game over! New game?",
+    POSITION_TAKEN: (pos) => `Position ${pos} taken!`,
+    INVALID_POSITION: "Pick 1-9.",
+    GAME_OVER_START_NEW: "Game over! Play again?",
+    NEW_GAME_STARTED: 'New game! Your turn (X)',
+    CANT_PROCESS_MESSAGE: "Try asking differently?",
     THINKING: "🤔 Thinking...",
-    AI_THINKING: 'AI is thinking...',
-    GETTING_RANDOM_MOVE: 'Finding a random move...',
-    THINKING_BEST_MOVE: 'Analyzing the best move...',
-    PLAYING_MOVE: 'Making your move...',
-    CONFUSED: 'I do not know what to do.',
-    NEW_GAME_CONFIRMATION: "⚠️ You have a game in progress. Are you sure you want to start a new game? The current game will be lost. Please confirm or cancel.",
-    INVALID_CONFIRMATION: "Please confirm if you want to start a new game or continue the current one.",
-    ACTION_CANCELLED: "Action cancelled. Continuing with the current game."
+    GETTING_RANDOM_MOVE: 'Finding move...',
+    THINKING_BEST_MOVE: 'Analyzing...',
+    PLAYING_MOVE: 'Playing move...'
 };
 
 let appConfig = {
@@ -85,9 +74,7 @@ let gameState = {
     gameId: Date.now()
 };
 
-let lastChatInput = '';
 let chatHistory = [];
-let pendingConfirmation = null;
 let gameBoard, gameStatus, mcpStatus, mcpStatusText, ollamaStatus, ollamaStatusText;
 let chatMessages, chatInput, sendBtn, resourcesList, modelSelect, refreshModelsBtn;
 let mcpServerInput, updateMcpBtn, ollamaServerInput, updateOllamaBtn, aiAutoplayToggle;
@@ -95,19 +82,17 @@ let servicesHeader, servicesToggle, servicesContent;
 let availableModels = [];
 let isLoadingModels = false;
 
-// Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeElements();
     setupEventListeners();
     loadConfiguration();
+    loadMCPResources();
     checkMCPStatus();
     checkOllamaStatus();
-    loadMCPResources();
     resetGame();
-    updateGameStatus();
-    // Don't clear chat on initial load - there's no history yet
-    addSystemMessage(GAME_MESSAGES.WELCOME);
 });
+
+// Initialization/Configuration
 
 function initializeElements() {
     gameBoard = document.getElementById('gameBoard');
@@ -127,8 +112,6 @@ function initializeElements() {
     ollamaServerInput = document.getElementById('ollamaServerInput');
     updateOllamaBtn = document.getElementById('updateOllamaBtn');
     aiAutoplayToggle = document.getElementById('aiAutoplayToggle');
-    
-    // Initialize unified services panel elements
     servicesHeader = document.getElementById('servicesHeader');
     servicesToggle = document.getElementById('servicesToggle');
     servicesContent = document.getElementById('servicesContent');
@@ -138,763 +121,106 @@ async function loadConfiguration() {
     console.log('Using default configuration:');
     console.log(appConfig);
     
-    // Load saved MCP server URL from localStorage
-    const savedMcpUrl = localStorage.getItem('mcpServerUrl');
-    if (savedMcpUrl) {
-        appConfig.mcpServerUrl = savedMcpUrl;
-    }
-    
-    // Populate the MCP server input field
-    if (mcpServerInput) {
-        mcpServerInput.value = appConfig.mcpServerUrl;
-    }
-    
-    // Load saved Ollama server URL from localStorage
-    const savedOllamaUrl = localStorage.getItem('ollamaServerUrl');
-    if (savedOllamaUrl) {
-        appConfig.ollamaHost = savedOllamaUrl;
-    }
-    
-    // Populate the Ollama server input field
-    if (ollamaServerInput) {
-        ollamaServerInput.value = appConfig.ollamaHost;
-    }
-    
-    // Load available models and set up model selector
+    aiAutoplayToggle.checked = CONFIG.game.aiAutoPlay;
+    ollamaServerInput.value = appConfig.ollamaHost;
+    mcpServerInput.value = appConfig.mcpServerUrl;
     await loadAvailableModels();
-    
-    // Load saved model preference from localStorage
-    const savedModel = localStorage.getItem('selectedModel');
-    if (savedModel && availableModels.includes(savedModel)) {
-        appConfig.ollamaModel = savedModel;
-        if (modelSelect) {
-            modelSelect.value = savedModel;
-        }
-    }
-    
-    // Load AI auto-play setting from localStorage
-    const savedAutoPlay = localStorage.getItem('aiAutoPlay');
-    if (savedAutoPlay !== null) {
-        CONFIG.game.aiAutoPlay = savedAutoPlay === 'true';
-    }
-    
-    // Set the AI auto-play toggle state
-    if (aiAutoplayToggle) {
-        aiAutoplayToggle.checked = CONFIG.game.aiAutoPlay;
-    }
 }
 
-// Game Logic Functions
-function checkWinner(board) {
-    const winningCombinations = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-        [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-        [0, 4, 8], [2, 4, 6] // diagonals
-    ];
-
-    for (const combination of winningCombinations) {
-        const [a, b, c] = combination;
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            return board[a];
-        }
-    }
-    return null;
-}
-
-function makeMove(position, player) {
-    const index = position - 1;
-    
-    // Validation checks
-    if (gameState.gameOver) {
-        updateGameStatus(GAME_MESSAGES.GAME_OVER_START_NEW);
-        return false;
-    }
-    
-    if (index < 0 || index > 8) {
-        updateGameStatus(GAME_MESSAGES.INVALID_POSITION);
-        return false;
-    }
-    
-    if (gameState.board[index] !== null) {
-        updateGameStatus(GAME_MESSAGES.POSITION_TAKEN(position));
-        return false;
-    }
-    
-    if (gameState.player !== player) {
-        updateGameStatus(`It's ${gameState.player}'s turn, not ${player}!`);
-        return false;
-    }
-    
-    // Make the move
-    gameState.board[index] = player;
-    
-    // Check for game end
-    const winner = checkWinner(gameState.board);
-    if (winner) {
-        gameState.winner = winner;
-        gameState.gameOver = true;
-        updateGameBoard();
-        updateGameStatus(`🎉 ${winner} wins!`);
-        addSystemMessage(`🎉 Game Over! ${winner} wins!`);
-        return true;
-    } 
-    
-    if (gameState.board.every(cell => cell !== null)) {
-        gameState.winner = null; // Tie
-        gameState.gameOver = true;
-        updateGameBoard();
-        updateGameStatus(`🤝 It's a tie!`);
-        addSystemMessage(`🤝 Game Over! It's a tie!`);
-        return true;
-    } 
-    
-    // Switch player and continue game
-    gameState.player = gameState.player === PLAYERS.HUMAN ? PLAYERS.AI : PLAYERS.HUMAN;
-    updateGameBoard();
-    updateGameStatus();
-    
-    // If auto-play is enabled and it's now AI's turn, make an automatic move
-    if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
-        setTimeout(() => {
-            requestAIMove();
-        }, 1500); // Small delay to make it feel more natural
-    }
-    
-    return true;
-}
-
-function startNewGame() {
-    resetGame();
-    // Clear chat history when starting a new game
-    clearChat();
-    updateGameStatus(GAME_MESSAGES.NEW_GAME_STARTED);
-    addSystemMessage(GAME_MESSAGES.WELCOME);
-}
-
-function resetGame() {
-    gameState = {
-        board: Array(9).fill(null),
-        player: PLAYERS.HUMAN,
-        gameOver: false,
-        winner: null,
-        gameId: Date.now()
-    };
-    
-    // Clear any pending confirmations
-    pendingConfirmation = null;
-    
-    // Clear chat history for new game
-    chatHistory = [];
-    
-    updateGameBoard();
-    updateGameStatus();
-}
-
-async function handleNewGameRequest() {
-    // If game is already over, start new game immediately without confirmation
-    if (gameState.gameOver) {
-        startNewGame();
-        addBotMessage("Starting a new game!");
-        return;
-    }
-    
-    // If game is in progress, ask for confirmation
-    const movesMade = gameState.board.filter(cell => cell !== null).length;
-    if (movesMade > 0) {
-        pendingConfirmation = {
-            action: 'new_game',
-            message: GAME_MESSAGES.NEW_GAME_CONFIRMATION
-        };
-        
-        addBotMessage(GAME_MESSAGES.NEW_GAME_CONFIRMATION);
-        return;
-    }
-    
-    // If no moves made yet, start new game without confirmation
-    startNewGame();
-    addBotMessage("Starting a new game!");
-}
-
-// Chat Functions
-function addMessage(content, type = 'bot', includeTimestamp = CONFIG.chat.showTimestamps) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${type}`;
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.textContent = content;
-    messageDiv.appendChild(contentDiv);
-    
-    if (includeTimestamp && type !== 'system' && CONFIG.chat.showTimestamps) {
-        const timestampDiv = document.createElement('div');
-        timestampDiv.className = 'timestamp';
-        timestampDiv.textContent = new Date().toLocaleTimeString();
-        messageDiv.appendChild(timestampDiv);
-    }
-    
-    // Store in chat history (exclude system messages from history)
-    if (type !== 'system') {
-        chatHistory.push({
-            content: content,
-            type: type,
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function addSystemMessage(content) {
-    if (CONFIG.chat.showSystemMessages) {
-        addMessage(content, 'system', false);
-    }
-}
-
-function addUserMessage(content) {
-    addMessage(content, 'user');
-}
-
-function addBotMessage(content) {
-    addMessage(content, 'bot');
-}
-
-function clearChat() {
-    chatMessages.innerHTML = '';
-    chatHistory = []; // Clear chat history as well
-}
-
-function removeThinkingMessage() {
-    const messages = chatMessages.querySelectorAll('.message.bot');
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.textContent.includes(GAME_MESSAGES.THINKING)) {
-        lastMessage.remove();
-    }
-}
-
-async function processChatInput(input) {
-    // Handle pending confirmation first
-    if (pendingConfirmation) {
-        const normalizedInput = input.toLowerCase().trim();
-        
-        // More flexible confirmation understanding
-        const confirmWords = ['yes', 'y', 'ok', 'okay', 'sure', 'confirm', 'proceed', 'go ahead'];
-        const cancelWords = ['no', 'n', 'cancel', 'stop', 'nevermind', 'abort'];
-        
-        const isConfirm = confirmWords.some(word => normalizedInput.includes(word));
-        const isCancel = cancelWords.some(word => normalizedInput.includes(word));
-        
-        if (isConfirm && !isCancel) {
-            // User confirmed the action
-            const action = pendingConfirmation.action;
-            pendingConfirmation = null; // Clear confirmation
-            
-            if (action === 'new_game') {
-                startNewGame();
-                addBotMessage("New game started!");
-            }
-            return;
-        } else if (isCancel) {
-            // User cancelled the action
-            addBotMessage(GAME_MESSAGES.ACTION_CANCELLED);
-            pendingConfirmation = null; // Clear confirmation
-            return;
-        } else {
-            // Invalid response to confirmation
-            addBotMessage(GAME_MESSAGES.INVALID_CONFIRMATION);
-            return;
-        }
-    }
-    
-    // Parse the user input to determine which tool to use
-    console.log('Processing user prompt:');
-    console.log(input);
-    const result = await pickToolToUse(input);
-    console.log('Tool selection result:');
-    console.log(result);
-    
-    // Show tool identification information
-    if (result && CONFIG.ui.showToolSelectionReason) {
-        addSystemMessage(result.reason + " [" + result.tool + "]");
-    }
-
-    // Execute the appropriate action based on the identified tool
-    await executeToolAction(result.tool, result.arguments, input, result.conversationalResponse);
-}
-
-async function executeToolAction(toolName, args, originalInput, conversationalResponse = null) {
-    switch (toolName) {
-        case 'new_game':
-            await handleNewGameRequest();
-            break;
-            
-        case 'best_move':
-            await requestBestMove(args);
-            break;
-            
-        case 'random_move':
-            await requestRandomMove(args);
-            break;
-            
-        case 'play_move':
-            await requestPlayMove(args);
-            break;
-            
-        case 'none':
-        default:
-            // For 'none' or any unrecognized tool, use conversational response if available
-            await sendChatMessage(originalInput, conversationalResponse);
-            break;
-    }
-}
-
-async function getMCPCapabilities() {
-    try {
-        // Try to get server info
-        const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
-        
-        // Try to get available tools
-        const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/tools`);
-        
-        if (infoResponse.ok && toolsResponse.ok) {
-            const infoData = await infoResponse.json();
-            const toolsData = await toolsResponse.json();
-            
-            return {
-                status: 'connected',
-                serverInfo: infoData,
-                tools: toolsData.tools || []
-            };
-        } else {
-            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status}`);
-        }
-    } catch (error) {
-        console.error('Error getting MCP capabilities:', error);
-        return { 
-            tools: [], 
-            status: 'error',
-            error: error.message
-        };
-    }
-}
-
-async function getMCPResources() {
-    try {
-        const response = await fetch(`${appConfig.mcpServerUrl}/resources`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.resources || [];
-        }
-        return [];
-    } catch (error) {
-        console.error('Error getting MCP resources:', error);
-        return [];
-    }
-}
-
-async function loadMCPResources() {
-    try {
-        const resources = await getMCPResources();
-        updateResourcesPanel(resources);
-        // Restore the saved panel state after loading resources
-        restoreServicesPanelState();
-    } catch (error) {
-        console.error('Error loading MCP resources:', error);
-        updateResourcesPanel([]);
-        // Still restore state even if resources failed to load
-        restoreServicesPanelState();
-    }
-}
-
-function updateResourcesPanel(resources) {
-    if (!resourcesList) {
-        console.warn('Resources list element not found');
-        return;
-    }
-    
-    // Clear existing resources
-    resourcesList.innerHTML = '';
-    
-    // If no resources, show a message
-    if (resources.length === 0) {
-        const noResourcesMsg = document.createElement('div');
-        noResourcesMsg.className = 'no-resources-message';
-        noResourcesMsg.textContent = 'No resources available';
-        resourcesList.appendChild(noResourcesMsg);
-        return;
-    }
-    
-    resources.forEach(resource => {
-        const resourceItem = document.createElement('div');
-        resourceItem.className = 'resource-item';
-        
-        const resourceHeader = document.createElement('div');
-        resourceHeader.className = 'resource-header';
-        
-        const resourceName = document.createElement('h4');
-        resourceName.textContent = resource.name;
-        resourceName.className = 'resource-name';
-        
-        const resourceType = document.createElement('span');
-        resourceType.textContent = resource.mimeType;
-        resourceType.className = 'resource-type';
-        
-        const resourceDescription = document.createElement('p');
-        resourceDescription.textContent = resource.description;
-        resourceDescription.className = 'resource-description';
-        
-        const resourceUri = document.createElement('a');
-        resourceUri.href = '#';
-        resourceUri.setAttribute('data-uri', resource.uri);
-        resourceUri.textContent = 'View Content';
-        resourceUri.className = 'resource-link';
-        resourceUri.addEventListener('click', (e) => {
-            e.preventDefault();
-            showResourceContent(resource.uri, resource.name);
-        });
-        
-        resourceHeader.appendChild(resourceName);
-        resourceHeader.appendChild(resourceType);
-        
-        resourceItem.appendChild(resourceHeader);
-        resourceItem.appendChild(resourceDescription);
-        resourceItem.appendChild(resourceUri);
-        
-        resourcesList.appendChild(resourceItem);
+function setupEventListeners() {
+    window.addEventListener('online', function() {
+        updateGameStatus('🟢 Internet connection restored');
+        checkMCPStatus();
+        checkOllamaStatus();
     });
-}
 
-// ========================================
-// UNIFIED SERVICES PANEL FUNCTIONS
-// ========================================
+    window.addEventListener('offline', function() {
+        updateGameStatus('🔴 Internet connection lost');
+    });
 
-// Function to toggle the unified services panel
-function toggleServicesPanel() {
-    if (!servicesContent) {
-        console.warn('Services content panel not found');
-        return;
-    }
-    
-    const servicesPanel = servicesContent.closest('.services-panel');
-    if (!servicesPanel) {
-        console.warn('Services panel not found');
-        return;
-    }
-    
-    const isCollapsed = servicesPanel.classList.contains('collapsed');
-    
-    if (isCollapsed) {
-        // Expand the panel
-        servicesPanel.classList.remove('collapsed');
-        servicesPanel.classList.add('expanded');
+    gameBoard.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('cell')) return;
         
-        // Update accessibility
-        if (servicesToggle) {
-            servicesToggle.setAttribute('title', 'Hide Services Settings');
+        const position = parseInt(e.target.dataset.position);
+        if (position >= 1 && position <= 9 && !gameState.gameOver) {
+            addUserMessage(position.toString());
+            processChatInput(position.toString());
         }
-        
-        // Save state to localStorage
-        localStorage.setItem('servicesPanelExpanded', 'true');
-    } else {
-        // Collapse the panel
-        servicesPanel.classList.remove('expanded');
-        servicesPanel.classList.add('collapsed');
-        
-        // Update accessibility
-        if (servicesToggle) {
-            servicesToggle.setAttribute('title', 'Show Services Settings');
-        }
-        
-        // Save state to localStorage
-        localStorage.setItem('servicesPanelExpanded', 'false');
-    }
-}
+    });
 
-// Function to restore the services panel state from localStorage
-function restoreServicesPanelState() {
-    if (!servicesContent) return;
-    
-    const servicesPanel = servicesContent.closest('.services-panel');
-    if (!servicesPanel) return;
-    
-    const wasExpanded = localStorage.getItem('servicesPanelExpanded') === 'true';
-    
-    if (wasExpanded) {
-        servicesPanel.classList.remove('collapsed');
-        servicesPanel.classList.add('expanded');
-        if (servicesToggle) {
-            servicesToggle.setAttribute('title', 'Hide Services Settings');
+    aiAutoplayToggle.addEventListener('change', () => {
+        CONFIG.game.aiAutoPlay = aiAutoplayToggle.checked;
+        
+        const status = CONFIG.game.aiAutoPlay ? 'enabled' : 'disabled';
+        addGameMessage(`🤖 AI Auto-Play ${status}`);
+        
+        // If we just enabled auto-play and it's AI's turn, make a move
+        if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
+            setTimeout(() => {
+                requestAIMove();
+            }, 1000); // Small delay to make it feel more natural
         }
-    } else {
-        servicesPanel.classList.remove('expanded');
-        servicesPanel.classList.add('collapsed');
-        if (servicesToggle) {
-            servicesToggle.setAttribute('title', 'Show Services Settings');
-        }
-    }
-}
+    });
 
-// Initialize unified services panel
-function initServicesPanel() {
-    // Setup event listeners for services panel
-    if (servicesHeader) {
-        servicesHeader.addEventListener('click', toggleServicesPanel);
-    }
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleChatSubmit();
+        }
+    });
+    sendBtn.addEventListener('click', handleChatSubmit);
+
+    ollamaServerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleOllamaServerUpdate();
+        }
+    });
+    updateOllamaBtn.addEventListener('click', handleOllamaServerUpdate);
+
+    modelSelect.addEventListener('change', () => {
+        const selectedModel = modelSelect.value;
+        
+        if (selectedModel && selectedModel !== appConfig.ollamaModel) {
+            appConfig.ollamaModel = selectedModel;
+            updateOllamaStatus('connected', { model: selectedModel });
+            addGameMessage(`🤖 Switched to model: ${selectedModel}`);
+            console.log('Model changed to:', selectedModel);
+        }
+    });
+    refreshModelsBtn.addEventListener('click', async () => {
+        addGameMessage('🔄 Refreshing available models...');
+        await loadAvailableModels();
+        
+        if (availableModels.length > 0) {
+            addGameMessage(`✅ Found ${availableModels.length} available models`);
+        } else {
+            addGameMessage('❌ No models found or failed to connect to Ollama');
+        }
+    });
+
+    mcpServerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleMcpServerUpdate();
+        }
+    });
+    updateMcpBtn.addEventListener('click', handleMcpServerUpdate);
+
+    servicesHeader.addEventListener('click', toggleServicesPanel);
     
-    if (servicesToggle) {
-        servicesToggle.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent servicesHeader click
-            toggleServicesPanel();
-        });
-    }
+    servicesToggle.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent servicesHeader click
+        toggleServicesPanel();
+    });
     
-    // Restore panel state
+    window.setInterval(async () => {
+        await checkOllamaStatus();
+        await checkMCPStatus();
+        await loadMCPResources();
+    }, CONFIG.mcp.statusCheckInterval);
+
     restoreServicesPanelState();
 }
 
-async function showResourceContent(uri, name) {
-    try {
-        // Create modal if it doesn't exist
-        let modal = document.getElementById('resourceModal');
-        if (!modal) {
-            modal = createResourceModal();
-        }
-        
-        // Show loading state
-        const modalContent = modal.querySelector('.resource-modal-content');
-        const modalTitle = modal.querySelector('.resource-modal-title');
-        const modalBody = modal.querySelector('.resource-modal-body');
-        
-        modalTitle.textContent = name;
-        modalBody.innerHTML = '<div class="loading">Loading resource content...</div>';
-        modal.style.display = 'block';
-        
-        // Fetch resource content
-        const response = await fetch(`${appConfig.mcpServerUrl}/resources/${encodeURIComponent(uri)}`);
-        
-        if (response.ok) {
-            const data = await response.json();
-            const content = data.content || 'No content available';
-            
-            // Convert markdown-style content to HTML
-            const htmlContent = formatResourceContent(content);
-            modalBody.innerHTML = htmlContent;
-        } else {
-            modalBody.innerHTML = '<div class="error">Failed to load resource content</div>';
-        }
-    } catch (error) {
-        console.error('Error loading resource content:', error);
-        const modalBody = document.querySelector('.resource-modal-body');
-        if (modalBody) {
-            modalBody.innerHTML = '<div class="error">Error loading resource content</div>';
-        }
-    }
-}
-
-function createResourceModal() {
-    const modal = document.createElement('div');
-    modal.id = 'resourceModal';
-    modal.className = 'resource-modal';
-    
-    modal.innerHTML = `
-        <div class="resource-modal-content">
-            <div class="resource-modal-header">
-                <h2 class="resource-modal-title">Resource</h2>
-                <span class="resource-modal-close">&times;</span>
-            </div>
-            <div class="resource-modal-body">
-                Loading...
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Add event listeners
-    const closeBtn = modal.querySelector('.resource-modal-close');
-    closeBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-    });
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-    
-    return modal;
-}
-
-function formatResourceContent(content) {
-    // Simple markdown-like formatting
-    let formatted = content
-        // Headers
-        .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-        .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-        .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-        // Bold
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        // Code blocks
-        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-        // Inline code
-        .replace(/`(.*?)`/g, '<code>$1</code>')
-        // Line breaks
-        .replace(/\n\n/g, '</p><p>')
-        // Lists
-        .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
-        .replace(/^- (.*$)/gm, '<li>$1</li>');
-    
-    // Wrap in paragraphs
-    if (!formatted.includes('<h1>') && !formatted.includes('<h2>')) {
-        formatted = '<p>' + formatted + '</p>';
-    }
-    
-    // Fix list formatting
-    formatted = formatted.replace(/(<li>.*<\/li>)/g, (match) => {
-        return '<ul>' + match + '</ul>';
-    });
-    
-    return formatted;
-}
-
-// Helper function to call MCP tools directly
-async function callMCPTool(toolName, args) {
-    try {
-        const response = await fetch(`${appConfig.mcpServerUrl}/call-tool`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                name: toolName,
-                arguments: args
-            })
-        });
-        
-        if (response.ok) {
-            return await response.json();
-        } else {
-            throw new Error(`MCP API error: ${response.status}`);
-        }
-    } catch (error) {
-        console.error(`MCP tool ${toolName} call failed:`, error.message);
-        throw error;
-    }
-}
-
-async function requestBestMove(args) {
-    if (gameState.gameOver) {
-        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
-        return;
-    }
-    
-    updateGameStatus(GAME_MESSAGES.THINKING_BEST_MOVE);
-    
-    try {
-        // Always call the MCP server to get the best move
-        const toolResult = await callMCPTool('best_move', {
-            board: gameState.board,
-            player: gameState.player,
-            game_over: gameState.gameOver,
-            winner: gameState.winner
-        });
-        
-        if (toolResult && !toolResult.isError) {
-            const toolResponse = toolResult.content[0]?.text || '';
-            const positionMatch = toolResponse.match(/position (\d+)/);
-            
-            if (positionMatch) {
-                const bestMove = parseInt(positionMatch[1]);
-                const success = makeMove(bestMove, gameState.player);
-                if (success) {
-                    addBotMessage(`The best move is position ${bestMove}!`);
-                } else {
-                    addBotMessage("Sorry, I couldn't make that best move.");
-                }
-            } else {
-                addBotMessage("Sorry, I couldn't determine the best move right now.");
-            }
-        } else {
-            addBotMessage("Sorry, I couldn't get the best move right now.");
-        }
-    } catch (error) {
-        console.error('Error getting best move:', error);
-        addBotMessage("Sorry, I couldn't get the best move right now.");
-    }
-}
-
-async function requestRandomMove(args) {
-    if (gameState.gameOver) {
-        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
-        return;
-    }
-    
-    updateGameStatus(GAME_MESSAGES.GETTING_RANDOM_MOVE);
-    
-    try {
-        // Always call the MCP server to get the random move
-        const toolResult = await callMCPTool('random_move', {
-            board: gameState.board,
-            player: gameState.player,
-            game_over: gameState.gameOver,
-            winner: gameState.winner
-        });
-        
-        if (toolResult && !toolResult.isError) {
-            const toolResponse = toolResult.content[0]?.text || '';
-            const positionMatch = toolResponse.match(/position (\d+)/);
-            
-            if (positionMatch) {
-                const randomMove = parseInt(positionMatch[1]);
-                const success = makeMove(randomMove, gameState.player);
-                if (success) {
-                    addBotMessage(`Random move: position ${randomMove}!`);
-                } else {
-                    addBotMessage("Sorry, I couldn't make that random move.");
-                }
-            } else {
-                addBotMessage("Sorry, I couldn't get a random move right now.");
-            }
-        } else {
-            addBotMessage("Sorry, I couldn't get a random move right now.");
-        }
-    } catch (error) {
-        console.error('Error getting random move:', error);
-        addBotMessage("Sorry, I couldn't get a random move right now.");
-    }
-}
-
-async function requestPlayMove(args) {
-    if (gameState.gameOver) {
-        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
-        return;
-    }
-    
-    // Extract position from args or parse from user input
-    let position = null;
-    if (args && args.position !== undefined) {
-        // If position is provided in args, use it
-        position = Array.isArray(args.position) ? args.position[0] : args.position;
-    }
-    
-    if (position === null || position < 1 || position > 9) {
-        addBotMessage("Invalid position specified. Please choose a position between 1-9.");
-        return;
-    }
-    
-    updateGameStatus(GAME_MESSAGES.PLAYING_MOVE);
-    
-    try {
-        const success = makeMove(position, gameState.player);
-        if (success) {
-            addBotMessage(`Played move at position ${position}!`);
-        } else {
-            addBotMessage(`Sorry, I couldn't make that move at position ${position}.`);
-        }
-    } catch (error) {
-        console.error('Error making play move:', error);
-        addBotMessage("Sorry, I couldn't make that move.");
-    }
-}
+// Ollama
 
 async function pickToolToUse(message) {
     try {
@@ -982,7 +308,6 @@ Remember the conversation history and respond appropriately to follow-up questio
             console.log('Ollama response:');
             console.log(aiResponse);
             
-            // Parse the AI response
             const toolMatch = aiResponse.match(/TOOL:\s*(\w+)/);
             const argsMatch = aiResponse.match(/ARGS:\s*(\{.*?\})/s);
             const reasonMatch = aiResponse.match(/REASON:\s*(.+?)(?=\n|$)/s);
@@ -1042,7 +367,7 @@ Remember the conversation history and respond appropriately to follow-up questio
 }
 
 async function sendChatMessage(message, providedResponse = null) {
-    addBotMessage(GAME_MESSAGES.THINKING);
+    addOpponentMessage(GAME_MESSAGES.THINKING);
     
     try {
         let responseText = providedResponse;
@@ -1053,204 +378,12 @@ async function sendChatMessage(message, providedResponse = null) {
         }
         
         removeThinkingMessage();
-        addBotMessage(responseText);
+        addOpponentMessage(responseText);
         
     } catch (error) {
         console.error('Error sending chat message:', error);
         removeThinkingMessage();
-        addBotMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
-    }
-}
-
-// Helper function to visualize the board
-function visualizeBoard(board) {
-    const display = board.map((cell, index) => {
-        if (cell) return cell;
-        return index+1;
-    });
-    
-    return `${display[0]} ${display[1]} ${display[2]}
-${display[3]} ${display[4]} ${display[5]}
-${display[6]} ${display[7]} ${display[8]}`;
-}
-
-// Helper function to format chat history for the prompt
-function formatChatHistoryForPrompt() {
-    if (chatHistory.length === 0) {
-        return "No previous conversation in this game.";
-    }
-    
-    // Limit messages based on configuration to avoid token limits
-    const recentHistory = chatHistory.slice(-CONFIG.chat.maxHistoryMessages);
-    
-    return recentHistory.map(msg => {
-        const role = msg.type === 'user' ? 'User' : 'Assistant';
-        return `${role}: ${msg.content}`;
-    }).join('\n');
-}
-
-function setupEventListeners() {
-    // Game board cell clicks
-    gameBoard.addEventListener('click', handleBoardClick);
-    
-    // Chat input events
-    sendBtn.addEventListener('click', handleChatSubmit);
-    chatInput.addEventListener('keypress', handleChatKeyPress);
-    chatInput.addEventListener('keydown', handleChatKeyDown);
-    
-    // Model selector events
-    if (modelSelect) {
-        modelSelect.addEventListener('change', handleModelChange);
-    }
-    if (refreshModelsBtn) {
-        refreshModelsBtn.addEventListener('click', refreshModels);
-    }
-    
-    // MCP server configuration events
-    if (updateMcpBtn) {
-        updateMcpBtn.addEventListener('click', handleMcpServerUpdate);
-    }
-    if (mcpServerInput) {
-        mcpServerInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                handleMcpServerUpdate();
-            }
-        });
-    }
-    
-    // Ollama server configuration events
-    if (updateOllamaBtn) {
-        updateOllamaBtn.addEventListener('click', handleOllamaServerUpdate);
-    }
-    if (ollamaServerInput) {
-        ollamaServerInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                handleOllamaServerUpdate();
-            }
-        });
-    }
-    
-    // AI Auto-play toggle
-    if (aiAutoplayToggle) {
-        aiAutoplayToggle.addEventListener('change', handleAIAutoplayToggle);
-    }
-    
-    // Initialize unified services panel
-    initServicesPanel();
-}
-
-function handleBoardClick(e) {
-    if (!e.target.classList.contains('cell')) return;
-    
-    const position = parseInt(e.target.dataset.position);
-    if (position >= 1 && position <= 9 && !gameState.gameOver) {
-        addUserMessage(position.toString());
-        processChatInput(position.toString());
-    }
-}
-
-function handleChatKeyPress(e) {
-    if (e.key === 'Enter') {
-        handleChatSubmit();
-    }
-}
-
-function handleChatKeyDown(e) {
-    // Handle up arrow to repeat last input
-    if (e.key === 'ArrowUp' && CONFIG.chat.enableUpArrowRepeat && lastChatInput && chatInput.value === '') {
-        e.preventDefault();
-        chatInput.value = lastChatInput;
-        chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
-    }
-}
-
-function handleChatSubmit() {
-    const input = chatInput.value.trim();
-    if (!input) return;
-    
-    // Store the input for up arrow functionality
-    lastChatInput = input;
-    
-    // Add user message to chat
-    addUserMessage(input);
-    
-    // Clear input
-    chatInput.value = '';
-    
-    // Process the input
-    processChatInput(input);
-}
-
-function updateGameStatus(message) {
-    if (message) {
-        gameStatus.textContent = message;
-        return;
-    }
-    
-    // Auto-generate status based on game state
-    if (gameState.gameOver) {
-        gameStatus.textContent = gameState.winner ? `🎉 ${gameState.winner} wins!` : "🤝 It's a tie!";
-    } else if (gameState.player === PLAYERS.HUMAN) {
-        gameStatus.textContent = "Your turn (X) - Click a cell or tell me your move";
-    } else {
-        // AI's turn - show different message based on auto-play setting
-        if (CONFIG.game.aiAutoPlay) {
-            gameStatus.textContent = "AI's turn (O) - Auto-playing...";
-        } else {
-            gameStatus.textContent = "AI's turn (O) - Ask me to make a move or suggest one";
-        }
-    }
-}
-
-function updateGameBoard() {
-    const cells = gameBoard.querySelectorAll('.cell');
-    
-    cells.forEach((cell, index) => {
-        const value = gameState.board[index];
-        
-        // Clear previous classes
-        cell.classList.remove('x', 'o', 'available', 'winning');
-        
-        if (value === PLAYERS.HUMAN) {
-            cell.classList.add('x');
-            cell.textContent = 'X';
-        } else if (value === PLAYERS.AI) {
-            cell.classList.add('o');
-            cell.textContent = 'O';
-        } else {
-            cell.classList.add('available');
-            cell.textContent = '';
-            
-            // Show position number on hover if game is not over and it's player's turn
-            if (!gameState.gameOver && gameState.player === PLAYERS.HUMAN && CONFIG.game.enableHoverNumbers) {
-                cell.setAttribute('data-hover', index + 1);
-            }
-        }
-        
-        // Enable/disable clicks based on game state
-        const isClickable = !gameState.gameOver && value === null;
-        cell.style.pointerEvents = isClickable ? 'auto' : 'none';
-        cell.style.cursor = isClickable ? 'pointer' : 'default';
-    });
-    
-    // Update game board classes for styling
-    gameBoard.classList.toggle('game-over', gameState.gameOver);
-    gameBoard.classList.toggle('x-turn', gameState.player === PLAYERS.HUMAN && !gameState.gameOver);
-    gameBoard.classList.toggle('o-turn', gameState.player === PLAYERS.AI && !gameState.gameOver);
-    
-    updateGameStatus();
-}
-
-async function checkMCPStatus() {
-    try {
-        const [capabilities, resources] = await Promise.all([
-            getMCPCapabilities(),
-            getMCPResources()
-        ]);
-        updateMCPStatus(capabilities.status, { ...capabilities, resources });
-    } catch (error) {
-        console.error('Error checking MCP status:', error);
-        updateMCPStatus('error', { error: error.message });
+        addOpponentMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
     }
 }
 
@@ -1280,181 +413,271 @@ async function checkOllamaStatus() {
     }
 }
 
-function updateMCPStatus(status, data) {
-    // Only update status display if enabled in configuration
-    if (!CONFIG.ui.showMCPStatus) {
-        return;
+function removeThinkingMessage() {
+    const messages = chatMessages.querySelectorAll('.message.bot');
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.textContent.includes(GAME_MESSAGES.THINKING)) {
+        lastMessage.remove();
     }
-    
-    const statusIndicator = mcpStatus.querySelector('.dot');
-    const toolsCount = data.tools?.length || 0;
-    const resourcesCount = data.resources?.length || 0;
-    
-    const statusConfig = {
-        connected: {
-            class: 'connected',
-            text: `Connected (${toolsCount} tools, ${resourcesCount} resources)`,
-            color: '#4CAF50'
-        },
-        disconnected: {
-            class: 'disconnected',
-            text: 'Disconnected',
-            color: '#f44336'
-        },
-        error: {
-            class: 'error',
-            text: 'Error',
-            color: '#ff9800'
-        }
-    };
-    
-    mcpStatus.classList.remove('connected', 'disconnected', 'error');
-    
-    const config = statusConfig[status] || statusConfig.error;
-    mcpStatus.classList.add(config.class);
-    mcpStatusText.textContent = config.text;
-    statusIndicator.style.backgroundColor = config.color;
 }
 
-function updateOllamaStatus(status, data) {
-    // Only update status display if enabled in configuration
-    if (!CONFIG.ui.showOllamaStatus) {
-        return;
-    }
-    
-    const statusIndicator = ollamaStatus.querySelector('.dot');
-    
-    const statusConfig = {
-        connected: {
-            class: 'connected',
-            text: `Connected (${data?.model || appConfig.ollamaModel})`,
-            color: '#4CAF50'
-        },
-        disconnected: {
-            class: 'disconnected',
-            text: 'Disconnected',
-            color: '#f44336'
-        },
-        error: {
-            class: 'error',
-            text: 'Error',
-            color: '#ff9800'
-        }
-    };
-    
-    ollamaStatus.classList.remove('connected', 'disconnected', 'error');
-    
-    const config = statusConfig[status] || statusConfig.error;
-    ollamaStatus.classList.add(config.class);
-    ollamaStatusText.textContent = config.text;
-    statusIndicator.style.backgroundColor = config.color;
-}
+// MCP
 
-// Model Management Functions
-async function loadAvailableModels() {
-    if (isLoadingModels) return;
-    
-    isLoadingModels = true;
-    
+async function callMCPTool(toolName, args) {
     try {
-        // Update UI to show loading state
-        if (modelSelect) {
-            modelSelect.disabled = true;
-            modelSelect.innerHTML = '<option value="">Loading models...</option>';
-        }
-        if (refreshModelsBtn) {
-            refreshModelsBtn.disabled = true;
-        }
-        
-        const response = await fetch(`${appConfig.ollamaHost}/api/tags`, {
-            method: 'GET',
+        const response = await fetch(`${appConfig.mcpServerUrl}/call-tool`, {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            body: JSON.stringify({
+                name: toolName,
+                arguments: args
+            })
         });
         
         if (response.ok) {
-            const data = await response.json();
-            availableModels = data.models?.map(model => model.name) || [];
-            
-            // Update model selector
-            updateModelSelector();
-            
-            console.log('Available models loaded:', availableModels);
+            return await response.json();
         } else {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error(`MCP API error: ${response.status}`);
         }
     } catch (error) {
-        console.error('Error loading available models:', error);
-        availableModels = [];
-        
-        if (modelSelect) {
-            modelSelect.innerHTML = '<option value="">Failed to load models</option>';
-        }
-        
-        // Add system message about model loading failure
-        addSystemMessage('⚠️ Could not load available models. Using default model.');
-    } finally {
-        isLoadingModels = false;
-        
-        if (refreshModelsBtn) {
-            refreshModelsBtn.disabled = false;
-        }
+        console.error(`MCP tool ${toolName} call failed:`, error.message);
+        throw error;
     }
 }
 
-function updateModelSelector() {
-    if (!modelSelect) return;
+async function getMCPCapabilities() {
+    try {
+        const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
+        const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/tools`);
+        
+        if (infoResponse.ok && toolsResponse.ok) {
+            const infoData = await infoResponse.json();
+            const toolsData = await toolsResponse.json();
+            
+            return {
+                status: 'connected',
+                serverInfo: infoData,
+                tools: toolsData.tools || []
+            };
+        } else {
+            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status}`);
+        }
+    } catch (error) {
+        console.error('Error getting MCP capabilities:', error);
+        return { 
+            tools: [], 
+            status: 'error',
+            error: error.message
+        };
+    }
+}
+
+async function getMCPResources() {
+    try {
+        const response = await fetch(`${appConfig.mcpServerUrl}/resources`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.resources || [];
+        }
+        return [];
+    } catch (error) {
+        console.error('Error getting MCP resources:', error);
+        return [];
+    }
+}
+
+async function loadMCPResources() {
+    try {
+        const resources = await getMCPResources();
+        updateResourcesPanel(resources);
+        restoreServicesPanelState();
+    }
+    catch (error) {
+        console.error('Error loading MCP resources:', error);
+        updateResourcesPanel([]);
+        restoreServicesPanelState();
+    }
+}
+
+async function checkMCPStatus() {
+    try {
+        const [capabilities, resources] = await Promise.all([
+            getMCPCapabilities(),
+            getMCPResources()
+        ]);
+        updateMCPStatus(capabilities.status, { ...capabilities, resources });
+    } catch (error) {
+        console.error('Error checking MCP status:', error);
+        updateMCPStatus('error', { error: error.message });
+    }
+}
+
+// Handlers
+
+function handleChatSubmit() {
+    const input = chatInput.value.trim();
+    if (!input) return;
     
-    // Clear existing options
-    modelSelect.innerHTML = '';
-    
-    if (availableModels.length === 0) {
-        modelSelect.innerHTML = '<option value="">No models available</option>';
-        modelSelect.disabled = true;
+    chatInput.value = '';
+    addUserMessage(input);
+    processChatInput(input);
+}
+
+async function handleNewGameRequest() {
+    const movesMade = gameState.board.filter(cell => cell !== null).length;
+    if (gameState.gameOver || movesMade == 0) return resetGame();
+
+    const confirmed = confirm("Game in progress. Start new game? Current game will be lost.");
+    if (confirmed) return resetGame();
+
+    addGameMessage("New game cancelled. Continuing current game.");
+}
+
+async function handleBestMoveRequest(args) {
+    if (gameState.gameOver) {
+        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
         return;
     }
     
-    // Add default/placeholder option
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = 'Select a model...';
-    modelSelect.appendChild(defaultOption);
+    updateGameStatus(GAME_MESSAGES.THINKING_BEST_MOVE);
     
-    // Add available models
-    availableModels.forEach(modelName => {
-        const option = document.createElement('option');
-        option.value = modelName;
-        option.textContent = modelName;
+    try {
+        // Always call the MCP server to get the best move
+        const toolResult = await callMCPTool('best_move', {
+            board: gameState.board,
+            player: gameState.player,
+            game_over: gameState.gameOver,
+            winner: gameState.winner
+        });
         
-        // Mark as selected if it matches current model
-        if (modelName === appConfig.ollamaModel) {
-            option.selected = true;
+        if (toolResult && !toolResult.isError) {
+            const toolResponse = toolResult.content[0]?.text || '';
+            const positionMatch = toolResponse.match(/position (\d+)/);
+            
+            if (positionMatch) {
+                const bestMove = parseInt(positionMatch[1]);
+                const success = makeMove(bestMove, gameState.player);
+                if (success) {
+                    addOpponentMessage(`The best move is position ${bestMove}!`);
+                } else {
+                    addOpponentMessage("Sorry, I couldn't make that best move.");
+                }
+            } else {
+                addOpponentMessage("Sorry, I couldn't determine the best move right now.");
+            }
+        } else {
+            addOpponentMessage("Sorry, I couldn't get the best move right now.");
         }
-        
-        modelSelect.appendChild(option);
-    });
-    
-    modelSelect.disabled = false;
+    } catch (error) {
+        console.error('Error getting best move:', error);
+        addOpponentMessage("Sorry, I couldn't get the best move right now.");
+    }
 }
 
-function handleModelChange() {
-    const selectedModel = modelSelect.value;
+async function handleRandomMoveRequest(args) {
+    if (gameState.gameOver) {
+        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        return;
+    }
     
-    if (selectedModel && selectedModel !== appConfig.ollamaModel) {
+    updateGameStatus(GAME_MESSAGES.GETTING_RANDOM_MOVE);
+    
+    try {
+        // Always call the MCP server to get the random move
+        const toolResult = await callMCPTool('random_move', {
+            board: gameState.board,
+            player: gameState.player,
+            game_over: gameState.gameOver,
+            winner: gameState.winner
+        });
+        
+        if (toolResult && !toolResult.isError) {
+            const toolResponse = toolResult.content[0]?.text || '';
+            const positionMatch = toolResponse.match(/position (\d+)/);
+            
+            if (positionMatch) {
+                const randomMove = parseInt(positionMatch[1]);
+                const success = makeMove(randomMove, gameState.player);
+                if (success) {
+                    addOpponentMessage(`Random move: position ${randomMove}!`);
+                } else {
+                    addOpponentMessage("Sorry, I couldn't make that random move.");
+                }
+            } else {
+                addOpponentMessage("Sorry, I couldn't get a random move right now.");
+            }
+        } else {
+            addOpponentMessage("Sorry, I couldn't get a random move right now.");
+        }
+    } catch (error) {
+        console.error('Error getting random move:', error);
+        addOpponentMessage("Sorry, I couldn't get a random move right now.");
+    }
+}
+
+async function handlePlayMoveRequest(args) {
+    if (gameState.gameOver) {
+        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        return;
+    }
+    
+    // Extract position from args or parse from user input
+    let position = null;
+    if (args && args.position !== undefined) {
+        // If position is provided in args, use it
+        position = Array.isArray(args.position) ? args.position[0] : args.position;
+    }
+    
+    if (position === null || position < 1 || position > 9) {
+        addOpponentMessage("Invalid position specified. Please choose a position between 1-9.");
+        return;
+    }
+    
+    updateGameStatus(GAME_MESSAGES.PLAYING_MOVE);
+    
+    try {
+        const success = makeMove(position, gameState.player);
+        if (success) {
+            addOpponentMessage(`Played move at position ${position}!`);
+        } else {
+            addOpponentMessage(`Sorry, I couldn't make that move at position ${position}.`);
+        }
+    } catch (error) {
+        console.error('Error making play move:', error);
+        addOpponentMessage("Sorry, I couldn't make that move.");
+    }
+}
+
+async function handleOllamaServerUpdate() {
+    const newServerUrl = ollamaServerInput.value.trim();
+    
+    if (!newServerUrl) {
+        addGameMessage('❌ Please enter a valid Ollama server URL');
+        return;
+    }
+    
+    // Validate URL format
+    try {
+        new URL(newServerUrl);
+    } catch (e) {
+        addGameMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://localhost:11434)');
+        return;
+    }
+    
+    if (newServerUrl !== appConfig.ollamaHost) {
         // Update configuration
-        appConfig.ollamaModel = selectedModel;
+        appConfig.ollamaHost = newServerUrl;
         
-        // Save to localStorage for persistence
-        localStorage.setItem('selectedModel', selectedModel);
+        // Add system message about server change
+        addGameMessage(`🌐 Ollama server updated to: ${newServerUrl}`);
         
-        // Update Ollama status to reflect new model
-        updateOllamaStatus('connected', { model: selectedModel });
+        console.log('Ollama server changed to:', newServerUrl);
         
-        // Add system message about model change
-        addSystemMessage(`🤖 Switched to model: ${selectedModel}`);
-        
-        console.log('Model changed to:', selectedModel);
+        // Re-check Ollama status and reload models
+        await checkOllamaStatus();
+        await loadAvailableModels();
     }
 }
 
@@ -1492,146 +715,614 @@ async function handleMcpServerUpdate() {
     }
 }
 
-async function handleOllamaServerUpdate() {
-    const newServerUrl = ollamaServerInput.value.trim();
+function handleModelChange() {
+    const selectedModel = modelSelect.value;
     
-    if (!newServerUrl) {
-        addSystemMessage('❌ Please enter a valid Ollama server URL');
-        return;
-    }
-    
-    // Validate URL format
-    try {
-        new URL(newServerUrl);
-    } catch (e) {
-        addSystemMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://localhost:11434)');
-        return;
-    }
-    
-    if (newServerUrl !== appConfig.ollamaHost) {
+    if (selectedModel && selectedModel !== appConfig.ollamaModel) {
         // Update configuration
-        appConfig.ollamaHost = newServerUrl;
+        appConfig.ollamaModel = selectedModel;
         
-        // Save to localStorage for persistence
-        localStorage.setItem('ollamaServerUrl', newServerUrl);
+        // Update Ollama status to reflect new model
+        updateOllamaStatus('connected', { model: selectedModel });
         
-        // Add system message about server change
-        addSystemMessage(`🌐 Ollama server updated to: ${newServerUrl}`);
+        // Add system message about model change
+        addGameMessage(`🤖 Switched to model: ${selectedModel}`);
         
-        console.log('Ollama server changed to:', newServerUrl);
-        
-        // Re-check Ollama status and reload models
-        await checkOllamaStatus();
-        await loadAvailableModels();
+        console.log('Model changed to:', selectedModel);
     }
 }
 
-async function refreshModels() {
-    addSystemMessage('🔄 Refreshing available models...');
-    await loadAvailableModels();
-    
-    if (availableModels.length > 0) {
-        addSystemMessage(`✅ Found ${availableModels.length} available models`);
-    } else {
-        addSystemMessage('❌ No models found or failed to connect to Ollama');
-    }
-}
-
-function handleAIAutoplayToggle() {
-    CONFIG.game.aiAutoPlay = aiAutoplayToggle.checked;
-    
-    // Save to localStorage for persistence
-    localStorage.setItem('aiAutoPlay', CONFIG.game.aiAutoPlay.toString());
-    
-    const status = CONFIG.game.aiAutoPlay ? 'enabled' : 'disabled';
-    addSystemMessage(`🤖 AI Auto-Play ${status}`);
-    
-    // If we just enabled auto-play and it's AI's turn, make a move
-    if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
-        setTimeout(() => {
-            requestAIMove();
-        }, 1000); // Small delay to make it feel more natural
-    }
-}
+// Game
 
 async function requestAIMove() {
     if (gameState.gameOver) return;
     
     try {
-        addSystemMessage('🤖 AI is thinking...');
-        await requestBestMove({ player: PLAYERS.AI });
+        addGameMessage('🤖 Calling MCP Server...');
+        await handleBestMoveRequest({ player: PLAYERS.AI });
     } catch (error) {
         console.error('Error requesting AI move:', error);
-        addSystemMessage('❌ Failed to get AI move. You can ask me to make a move manually.');
+        addGameMessage('❌ Failed to get AI move. You can ask me to make a move manually.');
     }
 }
 
-// Event Listeners Setup
-// Only set up periodic status checking if enabled
-if (CONFIG.mcp.enablePeriodicStatusCheck) {
-    setInterval(async () => {
-        await checkMCPStatus();
-        await checkOllamaStatus();
-        await loadMCPResources(); // Refresh resources as well
-    }, CONFIG.mcp.statusCheckInterval); // Check MCP status using configurable interval
-}
-
-document.addEventListener('visibilitychange', async function() {
-    if (!document.hidden) {
-        await checkMCPStatus();
-        await checkOllamaStatus();
-        await loadMCPResources();
-    }
-});
-
-document.addEventListener('keydown', function(e) {
-    // Only handle shortcuts if enabled and chat input is not focused
-    if (!CONFIG.game.enableKeyboardShortcuts || document.activeElement === chatInput) return;
+function makeMove(position, player) {
+    const index = position - 1;
     
-    // Number keys 1-9 for quick moves (when game allows it)
-    if (!gameState.gameOver && gameState.player === PLAYERS.HUMAN) {
-        const num = parseInt(e.key);
-        if (num >= 1 && num <= 9) {
-            addUserMessage(num.toString());
-            processChatInput(num.toString());
-            e.preventDefault();
+    // Validation checks
+    if (gameState.gameOver) {
+        updateGameStatus(GAME_MESSAGES.GAME_OVER_START_NEW);
+        return false;
+    }
+    
+    if (index < 0 || index > 8) {
+        updateGameStatus(GAME_MESSAGES.INVALID_POSITION);
+        return false;
+    }
+    
+    if (gameState.board[index] !== null) {
+        updateGameStatus(GAME_MESSAGES.POSITION_TAKEN(position));
+        return false;
+    }
+    
+    if (gameState.player !== player) {
+        updateGameStatus(`It's ${gameState.player}'s turn, not ${player}!`);
+        return false;
+    }
+    
+    // Make the move
+    gameState.board[index] = player;
+    
+    // Check for game end
+    const winner = checkWinner(gameState.board);
+    if (winner) {
+        gameState.winner = winner;
+        gameState.gameOver = true;
+        updateGameBoard();
+        updateGameStatus(`🎉 ${winner} wins!`);
+        addGameMessage(`🎉 Game Over! ${winner} wins!`);
+        return true;
+    } 
+    
+    if (gameState.board.every(cell => cell !== null)) {
+        gameState.winner = null; // Tie
+        gameState.gameOver = true;
+        updateGameBoard();
+        updateGameStatus(`🤝 It's a tie!`);
+        addGameMessage(`🤝 Game Over! It's a tie!`);
+        return true;
+    } 
+    
+    // Switch player and continue game
+    gameState.player = gameState.player === PLAYERS.HUMAN ? PLAYERS.AI : PLAYERS.HUMAN;
+    updateGameBoard();
+    updateGameStatus();
+    
+    // If auto-play is enabled and it's now AI's turn, make an automatic move
+    if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
+        setTimeout(() => {
+            requestAIMove();
+        }, 1000); // Small delay to make it feel more natural
+    }
+    
+    return true;
+}
+
+function resetGame() {
+    gameState = {
+        board: Array(9).fill(null),
+        player: PLAYERS.HUMAN,
+        gameOver: false,
+        winner: null,
+        gameId: Date.now()
+    };
+
+    clearChat();
+    updateGameBoard();
+    updateGameStatus(GAME_MESSAGES.NEW_GAME_STARTED);
+    addGameMessage(GAME_MESSAGES.WELCOME);
+}
+
+function checkWinner(board) {
+    const winningCombinations = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
+        [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
+        [0, 4, 8], [2, 4, 6] // diagonals
+    ];
+
+    for (const combination of winningCombinations) {
+        const [a, b, c] = combination;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            return board[a];
         }
     }
+    return null;
+}
+
+function updateGameBoard() {
+    const cells = gameBoard.querySelectorAll('.cell');
     
-    // 'n' for new game
-    if (e.key.toLowerCase() === 'n') {
-        addUserMessage('n');
-        processChatInput('new');
-        e.preventDefault();
+    cells.forEach((cell, index) => {
+        const value = gameState.board[index];
+        
+        cell.classList.remove('x', 'o', 'available', 'winning');
+        
+        if (value === PLAYERS.HUMAN) {
+            cell.classList.add('x');
+            cell.textContent = 'X';
+        }
+        else if (value === PLAYERS.AI) {
+            cell.classList.add('o');
+            cell.textContent = 'O';
+        }
+        else {
+            cell.classList.add('available');
+            cell.textContent = '';
+            
+            // Show position number on hover if game is not over and it's player's turn
+            if (!gameState.gameOver && gameState.player === PLAYERS.HUMAN && CONFIG.game.enableHoverNumbers) {
+                cell.setAttribute('data-hover', index + 1);
+            }
+        }
+        
+        const isClickable = !gameState.gameOver && value === null;
+        cell.style.pointerEvents = isClickable ? 'auto' : 'none';
+        cell.style.cursor = isClickable ? 'pointer' : 'default';
+    });
+    
+    // Update game board classes for styling
+    gameBoard.classList.toggle('game-over', gameState.gameOver);
+    gameBoard.classList.toggle('x-turn', gameState.player === PLAYERS.HUMAN && !gameState.gameOver);
+    gameBoard.classList.toggle('o-turn', gameState.player === PLAYERS.AI && !gameState.gameOver);
+    
+    updateGameStatus();
+}
+
+function visualizeBoard(board) {
+    const a = board.map((cell, index) => {
+        if (cell) return cell;
+        return index+1;
+    });
+    return `${a[0]} ${a[1]} ${a[2]}\n${a[3]} ${a[4]} ${a[5]}\n${a[6]} ${a[7]} ${a[8]}`;
+}
+
+function updateGameStatus(message) {
+    if (message) {
+        gameStatus.textContent = message;
+        return;
     }
     
-    // Focus chat input on '/' key
-    if (e.key === '/') {
-        chatInput.focus();
-        e.preventDefault();
+    // Auto-generate status based on game state
+    if (gameState.gameOver) {
+        gameStatus.textContent = gameState.winner ? `🎉 ${gameState.winner} wins!` : "🤝 It's a tie!";
+    } else if (gameState.player === PLAYERS.HUMAN) {
+        gameStatus.textContent = "Your turn (X) - Click a cell or tell me your move";
+    } else {
+        // AI's turn - show different message based on auto-play setting
+        if (CONFIG.game.aiAutoPlay) {
+            gameStatus.textContent = "AI's turn (O) - Auto-playing...";
+        } else {
+            gameStatus.textContent = "AI's turn (O) - Ask me to make a move or suggest one";
+        }
     }
-});
+}
 
-// Handle connection status
-window.addEventListener('online', function() {
-    updateGameStatus('🟢 Internet connection restored');
-    checkMCPStatus();
-    checkOllamaStatus();
-});
+// Chat
 
-window.addEventListener('offline', function() {
-    updateGameStatus('🔴 Internet connection lost');
-});
+async function processChatInput(input) {
+    // Parse the user input to determine which tool to use
+    console.log('Processing user prompt:');
+    console.log(input);
+    const result = await pickToolToUse(input);
+    console.log('Tool selection result:');
+    console.log(result);
+    
+    if (result) {
+        addGameMessage(result.reason + " [" + result.tool + "]");
+    }
 
-// Export functions for debugging (optional)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        makeMove,
-        startNewGame,
-        updateGameBoard,
-        checkMCPStatus,
-        resetGame,
-        checkWinner,
-        clearChat
+    switch (result.tool) {
+        case 'new_game':
+            await handleNewGameRequest(result.arguments);
+            break;
+            
+        case 'best_move':
+            await handleBestMoveRequest(result.arguments);
+            break;
+            
+        case 'random_move':
+            await handleRandomMoveRequest(result.arguments);
+            break;
+            
+        case 'play_move':
+            await handlePlayMoveRequest(result.arguments);
+            break;
+            
+        case 'none':
+        default:
+            await sendChatMessage(input, result.conversationalResponse);
+            break;
+    }
+}
+
+function formatChatHistoryForPrompt() {
+    if (chatHistory.length === 0) {
+        return "No previous conversation in this game.";
+    }
+    
+    // Limit messages based on configuration to avoid token limits
+    const recentHistory = chatHistory.slice(-CONFIG.chat.maxHistoryMessages);
+    
+    return recentHistory.map(msg => {
+        const role = msg.type === 'user' ? 'User' : 'Assistant';
+        return `${role}: ${msg.content}`;
+    }).join('\n');
+}
+
+function addMessage(type, content) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${type}`;
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.textContent = content;
+    messageDiv.appendChild(contentDiv);
+    
+    if (type !== 'system') {
+        const timestampDiv = document.createElement('div');
+        timestampDiv.className = 'timestamp';
+        timestampDiv.textContent = new Date().toLocaleTimeString();
+        messageDiv.appendChild(timestampDiv);
+
+        chatHistory.push({
+            content: content,
+            type: type,
+            timestamp: new Date().toISOString()
+        });
+    }
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addGameMessage(content) {
+    addMessage('system', content);
+}
+
+function addUserMessage(content) {
+    addMessage('user', content);
+}
+
+function addOpponentMessage(content) {
+    addMessage('bot', content);
+}
+
+function clearChat() {
+    chatMessages.innerHTML = '';
+    chatHistory = []; // Clear chat history as well
+}
+
+// Panel
+
+function toggleServicesPanel() {
+    const servicesPanel = servicesContent.closest('.services-panel');
+    
+    const isCollapsed = servicesPanel.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        // Expand the panel
+        servicesPanel.classList.remove('collapsed');
+        servicesPanel.classList.add('expanded');
+        
+        // Update accessibility
+        servicesToggle.setAttribute('title', 'Hide Services Settings');
+    } else {
+        // Collapse the panel
+        servicesPanel.classList.remove('expanded');
+        servicesPanel.classList.add('collapsed');
+        
+        // Update accessibility
+        servicesToggle.setAttribute('title', 'Show Services Settings');
+    }
+}
+
+function restoreServicesPanelState() {
+    const servicesPanel = servicesContent.closest('.services-panel');
+    const wasExpanded = false;
+    
+    if (wasExpanded) {
+        servicesPanel.classList.remove('collapsed');
+        servicesPanel.classList.add('expanded');
+        servicesToggle.setAttribute('title', 'Hide Services Settings');
+    } else {
+        servicesPanel.classList.remove('expanded');
+        servicesPanel.classList.add('collapsed');
+        servicesToggle.setAttribute('title', 'Show Services Settings');
+    }
+}
+
+function updateResourcesPanel(resources) {
+    resourcesList.innerHTML = '';
+    
+    if (resources.length === 0) {
+        const noResourcesMsg = document.createElement('div');
+        noResourcesMsg.className = 'no-resources-message';
+        noResourcesMsg.textContent = 'No resources available';
+        resourcesList.appendChild(noResourcesMsg);
+        return;
+    }
+    
+    resources.forEach(resource => {
+        const resourceItem = document.createElement('div');
+        resourceItem.className = 'resource-item';
+        
+        const resourceHeader = document.createElement('div');
+        resourceHeader.className = 'resource-header';
+        
+        const resourceName = document.createElement('h4');
+        resourceName.textContent = resource.name;
+        resourceName.className = 'resource-name';
+        
+        const resourceType = document.createElement('span');
+        resourceType.textContent = resource.mimeType;
+        resourceType.className = 'resource-type';
+        
+        const resourceDescription = document.createElement('p');
+        resourceDescription.textContent = resource.description;
+        resourceDescription.className = 'resource-description';
+        
+        const resourceUri = document.createElement('a');
+        resourceUri.href = '#';
+        resourceUri.setAttribute('data-uri', resource.uri);
+        resourceUri.textContent = 'View Content';
+        resourceUri.className = 'resource-link';
+        resourceUri.addEventListener('click', (e) => {
+            e.preventDefault();
+            showResourceContent(resource.uri, resource.name);
+        });
+        
+        resourceHeader.appendChild(resourceName);
+        resourceHeader.appendChild(resourceType);
+        
+        resourceItem.appendChild(resourceHeader);
+        resourceItem.appendChild(resourceDescription);
+        resourceItem.appendChild(resourceUri);
+        
+        resourcesList.appendChild(resourceItem);
+    });
+}
+
+function createResourceModal() {
+    const modal = document.createElement('div');
+    modal.id = 'resourceModal';
+    modal.className = 'resource-modal';
+    
+    modal.innerHTML = `
+        <div class="resource-modal-content">
+            <div class="resource-modal-header">
+                <h2 class="resource-modal-title">Resource</h2>
+                <span class="resource-modal-close">&times;</span>
+            </div>
+            <div class="resource-modal-body">
+                Loading...
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const closeBtn = modal.querySelector('.resource-modal-close');
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+    
+    return modal;
+}
+
+function formatResourceContent(content) {
+    // Simple markdown-like formatting
+    let formatted = content
+        // Headers
+        .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+        .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+        .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+        // Bold
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // Code blocks
+        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+        // Inline code
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        // Line breaks
+        .replace(/\n\n/g, '</p><p>')
+        // Lists
+        .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+        .replace(/^- (.*$)/gm, '<li>$1</li>');
+    
+    // Wrap in paragraphs
+    if (!formatted.includes('<h1>') && !formatted.includes('<h2>')) {
+        formatted = '<p>' + formatted + '</p>';
+    }
+    
+    // Fix list formatting
+    formatted = formatted.replace(/(<li>.*<\/li>)/g, (match) => {
+        return '<ul>' + match + '</ul>';
+    });
+    
+    return formatted;
+}
+
+async function showResourceContent(uri, name) {
+    try {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('resourceModal');
+        modal = modal || createResourceModal();
+        
+        // Show loading state
+        const modalContent = modal.querySelector('.resource-modal-content');
+        const modalTitle = modal.querySelector('.resource-modal-title');
+        const modalBody = modal.querySelector('.resource-modal-body');
+        
+        modalTitle.textContent = name;
+        modalBody.innerHTML = '<div class="loading">Loading resource content...</div>';
+        modal.style.display = 'block';
+        
+        // Fetch resource content
+        const response = await fetch(`${appConfig.mcpServerUrl}/resources/${encodeURIComponent(uri)}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            const content = data.content || 'No content available';
+            
+            // Convert markdown-style content to HTML
+            const htmlContent = formatResourceContent(content);
+            modalBody.innerHTML = htmlContent;
+        } else {
+            modalBody.innerHTML = '<div class="error">Failed to load resource content</div>';
+        }
+    } catch (error) {
+        console.error('Error loading resource content:', error);
+        const modalBody = document.querySelector('.resource-modal-body');
+        modalBody.innerHTML = '<div class="error">Error loading resource content</div>';
+    }
+}
+
+async function loadAvailableModels() {
+    if (isLoadingModels) return;
+    
+    isLoadingModels = true;
+    
+    try {
+        // Update UI to show loading state
+        modelSelect.disabled = true;
+        modelSelect.innerHTML = '<option value="">Loading models...</option>';
+        refreshModelsBtn.disabled = true;
+        
+        const response = await fetch(`${appConfig.ollamaHost}/api/tags`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            availableModels = data.models?.map(model => model.name) || [];
+            
+            // Update model selector
+            updateModelSelector();
+            
+            console.log('Available models loaded:', availableModels);
+        } else {
+            throw new Error(`HTTP ${response.status}`);
+        }
+    } catch (error) {
+        console.error('Error loading available models:', error);
+        availableModels = [];
+        
+        modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+        
+        // Add system message about model loading failure
+        addGameMessage('⚠️ Could not load available models. Using default model.');
+    } finally {
+        isLoadingModels = false;
+        
+        refreshModelsBtn.disabled = false;
+    }
+}
+
+function updateOllamaStatus(status, data) {
+    const statusIndicator = ollamaStatus.querySelector('.dot');
+    
+    const statusConfig = {
+        connected: {
+            class: 'connected',
+            text: `Connected (${data?.model || appConfig.ollamaModel})`,
+            color: '#4CAF50'
+        },
+        disconnected: {
+            class: 'disconnected',
+            text: 'Disconnected',
+            color: '#f44336'
+        },
+        error: {
+            class: 'error',
+            text: 'Error',
+            color: '#ff9800'
+        }
     };
+    
+    ollamaStatus.classList.remove('connected', 'disconnected', 'error');
+    
+    const config = statusConfig[status] || statusConfig.error;
+    ollamaStatus.classList.add(config.class);
+    ollamaStatusText.textContent = config.text;
+    statusIndicator.style.backgroundColor = config.color;
+}
+
+function updateMCPStatus(status, data) {
+    const statusIndicator = mcpStatus.querySelector('.dot');
+    const toolsCount = data.tools?.length || 0;
+    const resourcesCount = data.resources?.length || 0;
+    
+    const statusConfig = {
+        connected: {
+            class: 'connected',
+            text: `Connected (${toolsCount} tools, ${resourcesCount} resources)`,
+            color: '#4CAF50'
+        },
+        disconnected: {
+            class: 'disconnected',
+            text: 'Disconnected',
+            color: '#f44336'
+        },
+        error: {
+            class: 'error',
+            text: 'Error',
+            color: '#ff9800'
+        }
+    };
+    
+    mcpStatus.classList.remove('connected', 'disconnected', 'error');
+    
+    const config = statusConfig[status] || statusConfig.error;
+    mcpStatus.classList.add(config.class);
+    mcpStatusText.textContent = config.text;
+    statusIndicator.style.backgroundColor = config.color;
+}
+
+function updateModelSelector() {
+    modelSelect.innerHTML = '';
+    
+    if (availableModels.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+        modelSelect.disabled = true;
+        return;
+    }
+    
+    // Add default/placeholder option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select a model...';
+    modelSelect.appendChild(defaultOption);
+    
+    // Add available models
+    availableModels.forEach(modelName => {
+        const option = document.createElement('option');
+        option.value = modelName;
+        option.textContent = modelName;
+        
+        // Mark as selected if it matches current model
+        if (modelName === appConfig.ollamaModel) {
+            option.selected = true;
+        }
+        
+        modelSelect.appendChild(option);
+    });
+    
+    modelSelect.disabled = false;
 }
