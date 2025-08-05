@@ -1,0 +1,30 @@
+
+# Dependency Cache
+node_modules/
+
+# Environment Variables
+.env
+.env.*
+
+# Log Files
+*.log
+logs/
+
+# Build Artifacts and Generated Files
+dist/
+build/
+coverage/
+
+# Python Cache
+__pycache__/
+
+# Python Virtual Environment
+venv/
+
+# IDE/Editor-specific Files
+.vscode/
+.idea/
+
+# Operating System Specific Files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatTTT</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 ChatTTT</h1>
+            <p id="gameStatus">Click on a cell to make your move</p>
+        </header>
+        
+        <div class="game-section">
+            <div class="game-board" id="gameBoard">
+                <div class="cell" data-position="1"></div>
+                <div class="cell" data-position="2"></div>
+                <div class="cell" data-position="3"></div>
+                <div class="cell" data-position="4"></div>
+                <div class="cell" data-position="5"></div>
+                <div class="cell" data-position="6"></div>
+                <div class="cell" data-position="7"></div>
+                <div class="cell" data-position="8"></div>
+                <div class="cell" data-position="9"></div>
+            </div>
+        </div>
+        
+        <div class="chat-section">
+            <div class="chat-header">
+                <h3>🤖 Chat & Assistant</h3>
+                <div class="chat-help">
+                    Tell me where to play, ask for help, or just chat about strategy
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-container">
+                <input type="text" id="chatInput" placeholder="Tell me where to play, ask for help, or chat..." autocomplete="off">
+                <button id="sendBtn" class="btn-send">Send</button>
+            </div>
+        </div>
+        
+        <div class="mcp-status">
+            <div class="status-indicator" id="mcpStatus">
+                <span class="dot"></span>
+                <span>MCP Server: <span id="mcpStatusText">Checking...</span></span>
+            </div>
+        </div>
+        
+        <div class="resources-panel" id="resourcesPanel">
+            <div class="resources-header">
+                <h3>📚 Available Resources</h3>
+            </div>
+            <div class="resources-list" id="resourcesList"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

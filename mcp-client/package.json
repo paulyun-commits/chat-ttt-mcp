@@ -1,0 +1,19 @@
+{
+  "name": "chatttt-ai",
+  "version": "1.0.0",
+  "description": "ChatTTT game with AI integration via MCP server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": ["chattt", "ai", "mcp", "game"],
+  "author": "",
+  "license": "MIT"
+}
