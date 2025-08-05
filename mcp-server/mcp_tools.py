@@ -124,25 +124,25 @@ class MCPTools:
             Resource(
                 uri="chatttp://game-rules",
                 name="ChatTTT Game Rules",
-                description="Complete rules and gameplay mechanics for ChatTTT, including how to play, winning conditions, and available commands",
+                description="Complete rules and gameplay mechanics for ChatTTT, including how to play, winning conditions, interface features, and available commands",
                 mimeType="text/plain"
             ),
             Resource(
                 uri="chatttp://strategy-guide",
                 name="ChatTTT Strategy Guide",
-                description="Advanced strategies for optimal play, including opening moves, defensive tactics, and endgame scenarios",
+                description="Advanced strategies for optimal play, including opening moves, defensive tactics, endgame scenarios, and AI learning tips",
                 mimeType="text/markdown"
             ),
             Resource(
                 uri="chatttp://ai-algorithms",
-                name="AI Algorithm Information",
-                description="Technical details about the AI algorithms used in ChatTTT, including the minimax algorithm and evaluation functions",
+                name="AI Architecture and Algorithms",
+                description="Technical details about ChatTTT's hybrid AI system, including minimax algorithm, language model integration, and MCP implementation",
                 mimeType="text/markdown"
             ),
             Resource(
                 uri="chatttp://commands-reference",
                 name="Natural Language Interface Guide",
-                description="How to interact naturally with ChatTTT using conversational language instead of specific commands",
+                description="Comprehensive guide to interacting with ChatTTT using natural conversation, including examples, features, and troubleshooting",
                 mimeType="text/plain"
             )
         ]
@@ -151,47 +151,52 @@ class MCPTools:
         """Get the content of a specific resource."""
         try:
             if uri == "chatttp://game-rules":
-                content = """# ChatTTT Game Rules
+                return """# ChatTTT Game Rules
 
 ## Objective
 Be the first player to get three of your marks (X or O) in a row, column, or diagonal.
 
 ## How to Play
 1. The game is played on a 3x3 grid numbered 1-9:
-   ```
-    1 | 2 | 3 
-   -----------
-    4 | 5 | 6 
-   -----------
-    7 | 8 | 9 
-   ```
+```
+1 2 3 
+4 5 6 
+7 8 9 
+```
 
 2. Players take turns placing their marks (X for human, O for AI).
 3. You can make moves by:
-   - Clicking on an empty cell
+   - Clicking on an empty cell in the web interface
    - Typing a position number (1-9) in the chat
-   - Using voice commands like "play position 5"
+   - Using natural language like "I'll take position 5" or "top left corner"
 
 ## Available Commands
-- **Numbers 1-9**: Make a move at that position
-- **"new"**: Start a new game (asks for confirmation if game in progress)
-- **"random"**: Get a random move suggestion
-- **"best"**: Get the best move suggestion from the AI
-- **"help"**: Show available commands and resources
+- **Position numbers (1-9)**: Make a move at that position
+- **Natural language moves**: "I'll play the center", "top right corner", etc.
+- **"new game"** or **"restart"**: Start a new game (asks for confirmation if game in progress)
+- **"random"** or **"surprise me"**: Get a random move suggestion
+- **"best"** or **"what's the optimal play?"**: Get the best move suggestion from the AI
+- **"help"**: Access game resources and strategy guides
+
+## Game Features
+- **Auto-Play Mode**: Toggle to let the AI play automatically when it's their turn
+- **Chat Interface**: Natural conversation with the AI about strategy and gameplay
+- **Resource Library**: Access to strategy guides, AI algorithm explanations, and command references
+- **Real-time Status**: Live connection status for both Ollama and MCP services
 
 ## Winning Conditions
 - Three marks in a row (horizontal, vertical, or diagonal)
 - If all 9 positions are filled without a winner, it's a tie
 
 ## AI Features
-- The AI uses a minimax algorithm for optimal play
-- AI can provide move suggestions with "random" or "best" commands
-- Real-time game state analysis and strategic recommendations
+- Uses minimax algorithm with perfect play capability
+- Provides move suggestions and strategic analysis
+- Can explain reasoning behind moves
+- Supports both optimal and random play styles
 """
-                return content
                 
             elif uri == "chatttp://strategy-guide":
-                content = """# ChatTTT Strategy Guide
+                return """# ChatTTT Strategy Guide
 
 ## Opening Strategy
 ### Best Opening Moves
@@ -241,140 +246,236 @@ The ChatTTT AI uses minimax algorithm with:
 4. **Learn from AI**: Use "best" command to see optimal moves
 5. **Pattern study**: Memorize common winning and drawing patterns
 """
-                return content
                 
             elif uri == "chatttp://ai-algorithms":
-                content = """# ChatTTT AI Algorithms
+                return """# ChatTTT AI Algorithms
 
-## Minimax Algorithm
-The core AI uses the minimax algorithm with alpha-beta pruning.
+## Overview
+ChatTTT uses a sophisticated AI system combining multiple technologies:
+- **Minimax Algorithm**: Perfect game-tree search for optimal tic-tac-toe play
+- **Large Language Models**: Natural language understanding via Ollama
+- **Model Context Protocol (MCP)**: Tool integration and resource management
 
-### How Minimax Works
-1. **Game Tree**: Explores all possible future game states
-2. **Evaluation**: Assigns scores to terminal positions:
-   - Win: +10 points
-   - Loss: -10 points  
+## Minimax Algorithm Implementation
+The core game AI uses the minimax algorithm with perfect play capability.
+
+### How Minimax Works in ChatTTT
+1. **Game Tree Exploration**: Analyzes all possible future game states from current position
+2. **Position Evaluation**: Assigns scores to terminal positions:
+   - AI Win: +1 point
+   - AI Loss: -1 point  
    - Tie: 0 points
-3. **Backpropagation**: Chooses moves that maximize AI score while minimizing human score
+3. **Optimal Choice**: Selects moves that maximize AI score while minimizing opponent score
+4. **Perfect Play**: Never makes suboptimal moves when playing optimally
 
-### Algorithm Steps
-```
-function minimax(board, depth, isMaximizing):
-    if game is over:
-        return score
+### Algorithm Implementation
+```python
+def minimax(board, is_maximizing, ai_player):
+    winner = check_winner(board)
     
-    if isMaximizing (AI turn):
-        bestScore = -infinity
+    # Terminal state evaluation
+    if winner == ai_player:  return 1   # AI wins
+    elif winner is not None: return -1  # AI loses
+    elif None not in board:  return 0   # Tie game
+    
+    # Recursive evaluation
+    if is_maximizing:  # AI's turn
+        best_score = -infinity
         for each empty position:
-            make move
-            score = minimax(board, depth+1, false)
-            bestScore = max(score, bestScore)
+            make move for AI
+            score = minimax(board, False, ai_player)
             undo move
-        return bestScore
-    else (Human turn):
-        bestScore = +infinity
+            best_score = max(score, best_score)
+        return best_score
+    else:  # Opponent's turn
+        best_score = +infinity
         for each empty position:
-            make move
-            score = minimax(board, depth+1, true)
-            bestScore = min(score, bestScore)
+            make move for opponent
+            score = minimax(board, True, ai_player)
             undo move
-        return bestScore
+            best_score = min(score, best_score)
+        return best_score
 ```
 
-## Alpha-Beta Pruning
-Optimization technique that eliminates branches that won't affect the final decision.
+### Performance Characteristics
+- **Completeness**: Always finds the optimal move if one exists
+- **Time Complexity**: O(b^d) where b=branching factor, d=depth
+- **Space Complexity**: O(d) for recursive call stack
+- **Tic-tac-toe Specific**: Maximum 9! = 362,880 positions to evaluate
 
-### Benefits
-- **Speed**: Reduces computation time significantly
-- **Same result**: Always finds the same best move as basic minimax
-- **Scalability**: Allows deeper search in larger games
+## Natural Language Processing
+ChatTTT integrates with Ollama for conversational AI capabilities.
 
-## Position Evaluation
-### Static Evaluation Factors
-1. **Win/Loss detection**: Immediate game-ending positions
-2. **Threat analysis**: Positions that could lead to wins
-3. **Control metrics**: Center control, corner control
-4. **Pattern recognition**: Common tactical motifs
+### Language Model Integration
+- **Model Support**: Compatible with various Ollama models (Llama, etc.)
+- **Tool Selection**: AI determines which game tools to use based on user input
+- **Context Awareness**: Maintains conversation history and game state
+- **Response Generation**: Creates natural, helpful responses
 
-### Heuristics Used
-- **Center bonus**: Extra value for controlling position 5
-- **Corner preference**: Corners are generally stronger than edges
-- **Line development**: Progress toward completing winning lines
-- **Fork potential**: Positions that could create multiple threats
+### Prompt Engineering
+The system uses carefully crafted prompts for different functions:
 
-## Implementation Details
-### Data Structures
-- **Board representation**: Array of 9 positions
-- **Game state**: Current player, game status, winner
-- **Move generation**: List of legal moves from current position
+1. **Tool Selection Prompt**: Helps AI choose appropriate game actions
+2. **Conversation Prompt**: Enables natural chat about strategy and gameplay
+3. **Context Integration**: Includes game state and chat history
+4. **Resource Awareness**: AI knows about available help resources
 
-### Performance Optimizations
-- **Move ordering**: Try most promising moves first
-- **Transposition tables**: Cache previously calculated positions
-- **Iterative deepening**: Gradually increase search depth
-- **Quiescence search**: Handle tactical complications
+### Configuration Options
+- **Temperature**: Controls randomness (default: 0.2 for consistent tool selection)
+- **Max Tokens**: Response length limit (default: 2048)
+- **Context Window**: Conversation memory (default: 4096 tokens)
+- **Stop Sequences**: Prevents role confusion in dialogue
+
+## Model Context Protocol (MCP)
+ChatTTT implements MCP for tool integration and resource management.
+
+### Available Tools
+1. **new_game**: Reset board and start fresh game
+2. **best_move**: Get optimal move using minimax algorithm  
+3. **random_move**: Get random valid move for variety/learning
+4. **play_move**: Execute a move at specified position
+
+### Resource System
+MCP provides structured access to documentation:
+- **Game Rules**: Complete gameplay mechanics and features
+- **Strategy Guide**: Advanced tactics and winning patterns
+- **AI Algorithms**: Technical implementation details
+- **Commands Reference**: Natural language interface guide
+
+### Tool Execution Flow
+```
+User Input → Language Model → Tool Selection → MCP Server → Game Logic → Response
+```
+
+## Hybrid AI Architecture
+ChatTTT combines different AI approaches for optimal user experience:
+
+### Deterministic Game AI
+- **Perfect Information**: Complete knowledge of game state
+- **Optimal Play**: Minimax ensures best possible moves
+- **Predictable**: Consistent behavior for competitive play
+- **Fast**: Efficient computation for real-time response
+
+### Conversational AI
+- **Natural Language**: Understands varied user expressions
+- **Context Sensitive**: Adapts to conversation flow
+- **Educational**: Explains reasoning and strategy
+- **Flexible**: Handles ambiguous or creative input
+
+### Integration Benefits
+1. **Best of Both Worlds**: Perfect game play + natural conversation
+2. **Learning Support**: AI can explain optimal strategies
+3. **Accessibility**: Multiple ways to interact (clicks, text, conversation)
+4. **Adaptability**: Can adjust play style (optimal vs. random vs. educational)
+
+## Auto-Play Feature
+The AI can automatically play moves when enabled:
+
+### Implementation
+- **State Monitoring**: Detects when it's AI's turn
+- **Automatic Execution**: Calls best_move tool without user prompt
+- **Configurable**: Can be toggled on/off during gameplay
+- **Learning Tool**: Allows observation of optimal play patterns
+
+### Use Cases
+- **Study**: Watch perfect play to learn strategies
+- **Demonstration**: Show optimal game sequences
+- **Testing**: Validate game logic and AI behavior
+- **Entertainment**: AI vs AI gameplay
 
 ## Random Move Algorithm
-For learning and variety, the AI can also generate random moves:
+For educational variety and beginner-friendly play:
 
-1. **Find empty positions**: Scan board for available moves
-2. **Random selection**: Use cryptographically secure random number generator
-3. **Validation**: Ensure selected move is legal
-4. **Fallback**: If random fails, use minimax as backup
+### Implementation
+```python
+def random_move(board, player, game_over, winner):
+    if game_over: return -1
+    
+    valid_moves = [i for i, cell in enumerate(board) if cell is None]
+    if not valid_moves: return -1
+    
+    return random.choice(valid_moves) + 1  # Convert to 1-based indexing
+```
 
-This approach helps beginners learn by showing various move possibilities rather than always playing perfectly.
+### Benefits
+- **Learning**: Shows different move possibilities
+- **Variety**: Prevents repetitive perfect play
+- **Exploration**: Demonstrates various game paths
+- **Beginner Friendly**: Less intimidating than perfect play
+
+This multi-layered AI architecture makes ChatTTT both a challenging game and an educational tool for learning about game theory, AI algorithms, and natural language processing.
 """
-                return content
                 
             elif uri == "chatttp://commands-reference":
-                content = """# ChatTTT Natural Language Interface
+                return """# ChatTTT Natural Language Interface
 
 ## How to Interact
-ChatTTT uses natural language understanding, so you don't need to memorize specific commands. Just tell me what you want to do!
+ChatTTT features an advanced natural language interface powered by AI. You don't need to memorize specific commands - just tell the AI what you want to do in natural language!
 
 ## Making Moves
 ### Position Selection
-- **Natural**: "I'll take position 5" or "Put my X in the center"
-- **Simple**: "5" or just click on the cell
-- **Descriptive**: "Top left corner" or "middle right"
+- **Natural**: "I'll take position 5", "Put my X in the center", "I choose the middle"
+- **Simple**: Just type "5" or click on the cell
+- **Descriptive**: "Top left corner", "middle right", "bottom center"
+- **Conversational**: "Let me try the top row, second position"
 
 ### Board Layout Reference
 ```
- 1 | 2 | 3 
------------
- 4 | 5 | 6 
------------
- 7 | 8 | 9 
+1 2 3 
+4 5 6 
+7 8 9 
 ```
 
-## Game Control
+## Game Management
 ### Starting New Games
-- **Natural**: "Let's start over" or "I want a new game"
-- **Simple**: "New game" or "Restart"
-- **Conversational**: "Can we play again?"
+- **Natural**: "Let's start over", "I want a new game", "Can we restart?"
+- **Simple**: "New game", "Restart", "Reset"
+- **Conversational**: "This isn't going well, can we try again?"
 
-### Getting Help
-- **Strategy**: "What's a good move?" or "Help me decide"
-- **Random**: "Surprise me" or "Pick something random"
-- **Best Move**: "What's the optimal play?" or "Show me the best move"
+### Getting Help and Information
+- **Strategy**: "What's a good move?", "Help me decide", "What should I do?"
+- **Random**: "Surprise me", "Pick something random", "Give me any move"
+- **Best Move**: "What's the optimal play?", "Show me the best move", "What would you do?"
+- **Resources**: "Help", "Show me the guides", "Tell me about the rules"
 
-## AI Assistance
+## AI Assistance Features
+### Auto-Play Mode
+- Toggle the "Auto-Play" switch in the chat header
+- When enabled, AI automatically plays its moves
+- Great for watching AI vs AI gameplay or learning from AI strategies
+- Can be toggled on/off at any time during the game
+
 ### Move Suggestions
 The AI can help in several ways:
-- **Strategic analysis**: Ask "What should I do?" for the best move
-- **Learning**: Ask "What would you do?" for educational suggestions  
-- **Exploration**: Say "Show me options" for different possibilities
-- **Random play**: "Make a random move" for variety
+- **Strategic analysis**: Ask "What should I do?" for optimal move recommendations
+- **Learning support**: "What would you do?" for educational explanations
+- **Exploration**: "Show me my options" for different possibilities
+- **Random play**: "Make a random move" for variety and learning
 
-### Conversation
-- **Rules questions**: "How do I win?" or "What are the rules?"
-- **Strategy discussion**: "What's a good opening?" or "How does the AI work?"
-- **General chat**: Feel free to chat about anything!
+### Conversation and Learning
+- **Rules questions**: "How do I win?", "What are the rules?", "How does scoring work?"
+- **Strategy discussion**: "What's a good opening?", "How does the AI think?", "Why did you pick that move?"
+- **General chat**: Feel free to chat about anything - the AI is conversational!
+- **Game analysis**: "How am I doing?", "What are my chances?", "Is this a good position?"
+
+## Web Interface Features
+### Visual Elements
+- **Game Board**: Click any empty cell to make a move
+- **Chat Interface**: Type natural language commands and questions
+- **Status Panel**: Shows connection status for Ollama AI and MCP services
+- **Resource Library**: Access strategy guides and documentation
+- **Auto-Play Toggle**: Enable/disable automatic AI moves
+
+### Service Configuration
+- **Ollama Server**: Configure AI model server (default: localhost:11434)
+- **Model Selection**: Choose from available AI models
+- **MCP Server**: Configure game logic server (default: localhost:8000)
+- **Resource Access**: View game rules, strategies, and AI algorithm details
 
 ## Confirmation Handling
 When the system needs confirmation (like starting a new game mid-play):
-- **Confirm**: "Yes", "OK", "Go ahead", "Sure", "Confirm"
-- **Cancel**: "No", "Cancel", "Never mind", "Stop"
+- **Confirm**: "Yes", "OK", "Go ahead", "Sure", "Confirm", "Do it"
+- **Cancel**: "No", "Cancel", "Never mind", "Stop", "Don't do it"
 
 ## Examples of Natural Input
 ### Move Commands
@@ -382,43 +483,49 @@ When the system needs confirmation (like starting a new game mid-play):
 - "Put my X in the bottom left"
 - "5" (for center position)
 - "Top right corner please"
+- "Let me take the middle of the top row"
 
 ### Strategy Requests  
 - "What's my best move here?"
 - "Help me win this game"
-- "What would you do?"
+- "What would you do in this situation?"
 - "Give me a random suggestion"
+- "Show me my options"
 
 ### Game Management
 - "Let's start a fresh game"
-- "I want to restart"
+- "I want to restart this"
 - "New game please"
 - "Can we play again?"
+- "Reset the board"
 
-### Questions and Chat
+### Questions and Learning
 - "How does this game work?"
-- "What's a good strategy?"
+- "What's a good strategy for beginners?"
 - "Why did you pick that move?"
-- "Tell me about the AI"
+- "Tell me about the AI algorithms"
+- "What are the winning patterns?"
+- "How can I improve my play?"
 
 ## Tips for Best Experience
-1. **Be natural**: Speak as you would to a friend
+1. **Be natural**: Speak as you would to a friend playing games with you
 2. **Be specific**: "Top corner" is clearer than just "corner"
-3. **Ask questions**: The AI loves to explain and teach
-4. **Experiment**: Try different ways of saying things
-5. **Use context**: The AI remembers the current game state
+3. **Ask questions**: The AI loves to explain, teach, and discuss strategy
+4. **Experiment**: Try different ways of expressing the same request
+5. **Use context**: The AI remembers the current game state and conversation
+6. **Explore resources**: Use the resource panel to access detailed guides
+7. **Try auto-play**: Watch the AI play to learn optimal strategies
 
-## Error Handling
-If the AI doesn't understand:
-- Try rephrasing your request
+## Error Handling and Recovery
+If the AI doesn't understand your input:
+- Try rephrasing your request in simpler terms
 - Be more specific about what you want
 - Ask for clarification: "I meant position 5"
-- Use simpler language if needed
+- Use the visual interface: click directly on the board
+- Check the resource guides for examples
 
-The AI is designed to be helpful and forgiving, so don't worry about making mistakes!
+The AI is designed to be helpful, patient, and forgiving, so don't worry about making mistakes or asking for clarification!
 """
-                return content
-                
             else:
                 raise ValueError(f"Unknown resource URI: {uri}")
                 
