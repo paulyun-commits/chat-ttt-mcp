@@ -3,16 +3,14 @@ import random
 
 class TicTacToeAgent:
     def __init__(self):
-        """Initialize the random ChatTTT AI."""
-        self.player_symbol = 'O'
-        self.opponent_symbol = 'X'
+        pass
 
     def new_game(self) -> int:
-        """Start a new game."""
+        print("MCP-TicTacToeAgent: new_game")
         return 1
 
     def best_move(self, board: List[Optional[str]], player: str, game_over: bool = False, winner: Optional[str] = None) -> int:
-        """Get the best move using minimax algorithm."""
+        print("MCP-TicTacToeAgent: best_move", player, board)
         if game_over: return -1
 
         valid_moves = [i for i, cell in enumerate(board) if cell is None]
@@ -37,7 +35,7 @@ class TicTacToeAgent:
         return best_move_idx + 1  # Convert to 1-based indexing
 
     def random_move(self, board: List[Optional[str]], player: str, game_over: bool = False, winner: Optional[str] = None) -> int:
-        """Get a random move for the given player."""
+        print("MCP-TicTacToeAgent: random_move", player, board)
         if game_over: return -1
 
         valid_moves = [i for i, cell in enumerate(board) if cell is None]
@@ -46,22 +44,18 @@ class TicTacToeAgent:
         return random.choice(valid_moves) + 1  # Convert to 1-based indexing
 
     def play_move(self, board: List[Optional[str]], position: int, player: str) -> int:
-        """Make a move on the board at the specified position (1-based indexing)."""
+        print("MCP-TicTacToeAgent: play_move", player, board)
         if position < 1 or position > 9: return -1
         if board[position - 1] is not None: return -1
         return position
 
     def _minimax(self, board: List[Optional[str]], is_maximizing: bool, ai_player: str) -> int:
-        """Minimax algorithm implementation."""
         winner = self._check_winner(board)
         
         # Terminal states
-        if winner == ai_player:
-            return 1
-        elif winner is not None:
-            return -1
-        elif None not in board:  # Draw
-            return 0
+        if winner == ai_player:  return 1  # Win
+        elif winner is not None: return -1 # Loss
+        elif None not in board:  return 0  # Tie
         
         opponent = 'X' if ai_player == 'O' else 'O'
         
@@ -85,8 +79,6 @@ class TicTacToeAgent:
             return best_score
 
     def _check_winner(self, board: List[Optional[str]]) -> Optional[str]:
-        """Check if there's a winner on the board."""
-        # All possible winning combinations
         winning_combinations = [
             [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Rows
             [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columns
