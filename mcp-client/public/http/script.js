@@ -33,7 +33,7 @@ const CONFIG = {
     },
     
     game: {
-        aiAutoPlay: false
+        aiAutoPlay: true
     },
     
     ui: {
@@ -410,6 +410,66 @@ This is the user's request: "${message}"
     }
 }
 
+async function aiGetComment(message) {
+    addBotMessage(GAME_MESSAGES.THINKING);
+    
+    try {
+        const prompt = `
+You are a witty expert in the game of tic-tac-toe.
+The current player is the opposite of the one who made the last move.
+Direct your comment to the one who made the last move.
+If it's O, then it's you.  If it's X then it's me.
+
+CURRENT BOARD STATE:
+- Is Game Over? ${gameState.gameOver}
+- Winner: ${gameState.winner || 'none'}
+- Current Player: ${gameState.player}
+- Board Layout (X & O - played squares, 1-9 - valid moves):
+${visualizeBoard(gameState.board)}
+
+CHAT HISTORY:
+The last one is the current message from the user:
+${formatChatHistoryForPrompt()}
+
+INSTRUCTIONS:
+Analyze the user's request and respond with a witty, but short remark.
+No more than one sentence.
+
+This is the user's request: "${message}"
+`;
+        console.log("COMMENT MESSAGE PROMPT:", prompt)
+        const ollamaResponse = await fetch(`${appConfig.ollamaHost}/api/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: appConfig.ollamaModel,
+                prompt: `${prompt}\n\nAssistant:`,
+                stream: false,
+                options: {
+                    temperature: CONFIG.ollama.temperature,
+                    max_tokens: CONFIG.ollama.maxTokens
+                }
+            })
+        });
+
+        if (!ollamaResponse.ok) {
+            responseText = "I'm at a loss of words.";
+        }
+
+        const data = await ollamaResponse.json();
+        responseText = data.response?.trim();
+        
+        removeThinkingMessage();
+        addBotMessage(responseText);
+    }
+    catch (error) {
+        removeThinkingMessage();
+        addBotMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
+    }
+}
+
 async function checkOllamaStatus() {
     try {
         const response = await fetch(`${appConfig.ollamaHost}/api/version`, {
@@ -748,7 +808,9 @@ async function requestAIMove() {
     
     try {
         await handleBestMoveRequest({ player: PLAYERS.AI });
-    } catch (error) {
+        await aiGetComment("Make a comment about yourself");
+    }
+    catch (error) {
         console.error('Error requesting AI move:', error);
         addGameMessage('❌ Failed to get AI move. You can ask me to make a move manually.');
     }
@@ -936,14 +998,17 @@ async function processChatInput(input) {
             
         case 'best_move':
             await handleBestMoveRequest(result.arguments);
+            await aiGetComment(input);
             break;
             
         case 'random_move':
             await handleRandomMoveRequest(result.arguments);
+            await aiGetComment(input);
             break;
             
         case 'play_move':
             await handlePlayMoveRequest(result.arguments);
+            await aiGetComment(input);
             break;
             
         case 'none':
@@ -967,12 +1032,35 @@ function formatChatHistoryForPrompt() {
     }).join('\n');
 }
 
+function formatMessageContent(content) {
+    // Basic sanitization - escape HTML tags but preserve our formatting
+    const sanitized = content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    
+    // Apply basic markdown-like formatting
+    return sanitized
+        // Bold text: **text** or __text__
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.*?)__/g, '<strong>$1</strong>')
+        // Italic text: *text* or _text_
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/_(.*?)_/g, '<em>$1</em>')
+        // Code: `code`
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        // Line breaks
+        .replace(/\n/g, '<br>');
+}
+
 function addMessage(type, content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     
     const contentDiv = document.createElement('div');
-    contentDiv.textContent = content;
+    contentDiv.innerHTML = formatMessageContent(content);
     messageDiv.appendChild(contentDiv);
     
     if (type !== 'system') {

@@ -350,6 +350,35 @@ header p {
     margin-top: 5px;
 }
 
+/* Formatted text within messages */
+.message strong {
+    font-weight: bold;
+}
+
+.message em {
+    font-style: italic;
+}
+
+.message code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 0.9em;
+}
+
+.message.user code {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.message.bot code {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.message.system code {
+    background: rgba(0, 0, 0, 0.1);
+}
+
 .chat-input-container {
     display: flex;
     gap: 8px;
