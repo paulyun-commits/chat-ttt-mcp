@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-from agent import TicTacToeAgent
 from mcp_tools import MCPTools
 import config
 
@@ -30,7 +29,6 @@ class MCPClient:
     
     def __init__(self):
         self.process = None
-        self.agent = TicTacToeAgent()
         self.mcp_tools = MCPTools()
     
     async def start_mcp_server(self):
@@ -85,65 +83,24 @@ class MCPClient:
         ]
     
     async def call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call an MCP tool directly through the AI agent (fallback approach)."""
+        """Call an MCP tool through the MCPTools interface."""
         try:
-            if tool_name == "new_game":
-                result = self.agent.new_game()
-                return {
-                    "content": [{"type": "text", "text": f"New game started: {result}"}],
-                    "isError": False
-                }
-            elif tool_name == "best_move":
-                move = self.agent.best_move(
-                    arguments["board"], 
-                    arguments["player"],
-                    arguments.get("game_over", False),
-                    arguments.get("winner", None)
-                )
-                if move == -1:
-                    return {
-                        "content": [{"type": "text", "text": f"Could not determine best move for {arguments['player']}"}],
-                        "isError": True
-                    }
+            # Use MCPTools to execute the tool
+            result = await self.mcp_tools.execute_tool(tool_name, arguments)
+            
+            # Convert CallToolResult to the expected format
+            content_list = []
+            for content_item in result.content:
+                if hasattr(content_item, 'text'):
+                    content_list.append({"type": "text", "text": content_item.text})
                 else:
-                    # The AI agent now returns 1-9 positions directly
-                    return {
-                        "content": [{"type": "text", "text": f"Best move for {arguments['player']}: position {move}"}],
-                        "isError": False
-                    }
-            elif tool_name == "random_move":
-                move = self.agent.random_move(
-                    arguments["board"], 
-                    arguments["player"],
-                    arguments.get("game_over", False),
-                    arguments.get("winner", None)
-                )
-                if move == -1:
-                    return {
-                        "content": [{"type": "text", "text": f"Could not determine random move for {arguments['player']}"}],
-                        "isError": True
-                    }
-                else:
-                    # The AI agent returns 1-9 positions directly
-                    return {
-                        "content": [{"type": "text", "text": f"Random move for {arguments['player']}: position {move}"}],
-                        "isError": False
-                    }
-            elif tool_name == "play_move":
-                result = self.agent.play_move(
-                    arguments["board"],
-                    arguments["position"],
-                    arguments["player"]
-                )
-                return {
-                    "content": [{"type": "text", "text": result}],
-                    "isError": False
-                }
-            else:
-                return {
-                    "content": [{"type": "text", "text": f"Unknown tool: {tool_name}"}],
-                    "isError": True
-                }
+                    content_list.append({"type": "text", "text": str(content_item)})
+            
+            return {
+                "content": content_list,
+                "isError": getattr(result, 'isError', False)
+            }
+            
         except Exception as e:
             logger.error(f"Error calling MCP tool {tool_name}: {e}")
             return {
