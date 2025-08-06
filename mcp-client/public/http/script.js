@@ -231,9 +231,10 @@ async function aiChooseTool(message) {
         
         const prompt = `
 You are a smart assistant for a tic-tac-toe game that can select tools.
-Analyze the user's request and pick the most appropriate tool if there is one.
-Be picky and only select a tool if it really sounds like that's what the user wants.
-If the user message is just a number, use the 'play_move' tool.
+Analyze the user's request and pick the an appropriate tool if there is one.
+Be choosy and only select the tool that's right for the job, otherwise return 'none'.
+If the user's request is a single number, you can assume the play_move tool.
+If the user is just asking for a suggestion, then don't pick a tool and just respond.
 
 AVAILABLE TOOLS:
 ${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
@@ -241,7 +242,7 @@ ${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 AVAILABLE TOOLS USAGE:
 - best_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
 - random_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- play_move: {"board": ${JSON.stringify(gameState.board)}, "position": [position_number], "player": "${gameState.player}"}
+- play_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}, "position": [position_number]"}
 - new_game: {}
 
 CURRENT BOARD STATE:
@@ -269,7 +270,7 @@ ARGS: {}
 REASON: Brief explanation why no tool is needed
 RESPONSE: Your conversational response to the user
 
-Answer this prompt: "${message}"
+This is the user's request: "${message}"
 `;
         console.log("CHOOSE TOOL PROMPT:", prompt)
         const ollamaResponse = await fetch(`${appConfig.ollamaHost}/api/generate`, {
@@ -341,7 +342,7 @@ Answer this prompt: "${message}"
 }
 
 async function aiSendMessage(message, args) {
-    addOpponentMessage(GAME_MESSAGES.THINKING);
+    addBotMessage(GAME_MESSAGES.THINKING);
     
     try {
         let responseText = args.response;
@@ -373,7 +374,7 @@ ${formatChatHistoryForPrompt()}
 INSTRUCTIONS:
 Analyze the user's request and respond with helpful information.
 
-Answer this prompt: "${message}"
+This is the user's request: "${message}"
 `;
             console.log("SEND MESSAGE PROMPT:", prompt)
             const ollamaResponse = await fetch(`${appConfig.ollamaHost}/api/generate`, {
@@ -401,11 +402,11 @@ Answer this prompt: "${message}"
         }
         
         removeThinkingMessage();
-        addOpponentMessage(responseText);
+        addBotMessage(responseText);
     }
     catch (error) {
         removeThinkingMessage();
-        addOpponentMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
+        addBotMessage(GAME_MESSAGES.CANT_PROCESS_MESSAGE);
     }
 }
 
@@ -565,42 +566,47 @@ function handleChatSubmit() {
 async function handleNewGameRequest() {
     const confirmed = confirm("Start new game? Current game will be lost.");
     if (!confirmed) {
-        addOpponentMessage("New game cancelled, please continue.)");
+        addBotMessage("New game cancelled, please continue.");
         return;
     }
 
+    const mcp_args = {};
+
     try {
-        const toolResult = await callMCPTool('new_game', {});
+        addGameMessage(`MCP: Calling new_game with arguments: ${JSON.stringify(mcp_args)}`);
+        const toolResult = await callMCPTool('new_game', mcp_args);
         
         if (toolResult && !toolResult.isError) {
+            addBotMessage(`A new game is started!`);
             resetGame();
-            addOpponentMessage("MCP: A new game was started!");
             return;
         }
         
-        addOpponentMessage("MCP: A problem occured while resetting the game.");
+        addBotMessage(`A problem occured while resetting the game.`);
     }
     catch (error) {
-        addOpponentMessage("MCP: An error occured while resetting the game.");
+        addBotMessage(`An error occured while resetting the game.`);
     }
 }
 
 async function handleBestMoveRequest(args) {
     if (gameState.gameOver) {
-        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
         return;
     }
     
     updateGameStatus(GAME_MESSAGES.THINKING_BEST_MOVE);
-    
+
+    const mpc_args = {
+        board: gameState.board,
+        player: gameState.player,
+        game_over: gameState.gameOver,
+        winner: gameState.winner
+    };
+
     try {
-        // Always call the MCP server to get the best move
-        const toolResult = await callMCPTool('best_move', {
-            board: gameState.board,
-            player: gameState.player,
-            game_over: gameState.gameOver,
-            winner: gameState.winner
-        });
+        addGameMessage(`MCP: Calling best_move with arguments: ${JSON.stringify(mpc_args)}`);
+        const toolResult = await callMCPTool('best_move', mpc_args);
         
         if (toolResult && !toolResult.isError) {
             const toolResponse = toolResult.content[0]?.text || '';
@@ -608,37 +614,37 @@ async function handleBestMoveRequest(args) {
             
             if (positionMatch) {
                 const bestMove = parseInt(positionMatch[1]);
-                const success = makeMove(bestMove, gameState.player);
-                
-                if (success) {
-                    addOpponentMessage(`MCP: Placed best move in position ${bestMove}!`);
-                    return;
-                }
+                addBotMessage(`${mpc_args.player} plays the best move in position ${bestMove}!`);
+                const success = makeMove(bestMove, mpc_args.player); // gameState changes after makeMove()
+                if (success) return;
             }
         }
 
-        addOpponentMessage("MCP: A problem occured while making the best move.");
+        addBotMessage(`A problem occured while making the best move for ${mpc_args.player}.`);
     }
     catch (error) {
-        addOpponentMessage("MCP: An error occured while making the best move.");
+        addBotMessage(`An error occured while making the best move for ${mpc_args.player}.`);
     }
 }
 
 async function handleRandomMoveRequest(args) {
     if (gameState.gameOver) {
-        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
         return;
     }
     
     updateGameStatus(GAME_MESSAGES.GETTING_RANDOM_MOVE);
-    
+
+    const mpc_args = {
+        board: gameState.board,
+        player: gameState.player,
+        game_over: gameState.gameOver,
+        winner: gameState.winner
+    };
+
     try {
-        const toolResult = await callMCPTool('random_move', {
-            board: gameState.board,
-            player: gameState.player,
-            game_over: gameState.gameOver,
-            winner: gameState.winner
-        });
+        addGameMessage(`MCP: Calling random_move with arguments: ${JSON.stringify(mpc_args)}`);
+        const toolResult = await callMCPTool('random_move', mpc_args);
         
         if (toolResult && !toolResult.isError) {
             const toolResponse = toolResult.content[0]?.text || '';
@@ -646,48 +652,47 @@ async function handleRandomMoveRequest(args) {
             
             if (positionMatch) {
                 const randomMove = parseInt(positionMatch[1]);
-                const success = makeMove(randomMove, gameState.player);
-                if (success) {
-                    addOpponentMessage(`MCP: randomly played position ${randomMove}!`);
-                    return;
-                }
+                addBotMessage(`${mpc_args.player} plays a random move in position ${randomMove}!`);
+                const success = makeMove(randomMove, mpc_args.player); // gameState changes after makeMove()
+                if (success) return;
             }
         }
 
-        addOpponentMessage("MCP: A problem occured while making a random move.");
+        addBotMessage(`A problem occured while making a random move for ${mpc_args.player}.`);
     }
     catch (error) {
-        addOpponentMessage("MCP: An error occured while making a random move.");
+        addBotMessage(`An error occured while making a random move for ${mpc_args.player}.`);
     }
 }
 
 async function handlePlayMoveRequest(args) {
     if (gameState.gameOver) {
-        addOpponentMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
         return;
     }
     
     updateGameStatus(GAME_MESSAGES.PLAYING_MOVE);
-    
+
+    const mpc_args = {
+        board: gameState.board,
+        player: gameState.player,
+        position: parseInt(args.position.toString())
+    };
+
     try {
-        const toolResult = await callMCPTool('play_move', {
-            board: gameState.board,
-            player: gameState.player,
-            position: parseInt(args.position.toString())
-        });
+        addGameMessage(`MCP: Calling play_move with arguments: ${JSON.stringify(mpc_args)}`);
+        const toolResult = await callMCPTool('play_move', mpc_args);
         
         if (toolResult && !toolResult.isError) {
-            const success = makeMove(args.position, gameState.player);
-            if (success) {
-                addOpponentMessage(`MCP: placed move in position ${args.position}!`);
-                return;
-            }
+            addBotMessage(`${mpc_args.player} plays a move in position ${args.position}!`);
+            const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
+            if (success) return;
         }
 
-        addOpponentMessage(`MCP: A problem occured while making move ${args.position}.`);
+        addBotMessage(`A problem occured while making move ${args.position} for ${mpc_args.player}.`);
     }
     catch (error) {
-        addOpponentMessage(`MCP: An error occured while making move ${args.position}.`);
+        addBotMessage(`An error occured while making move ${args.position} for ${mpc_args.player}.`);
     }
 }
 
@@ -995,7 +1000,7 @@ function addUserMessage(content) {
     addMessage('user', content);
 }
 
-function addOpponentMessage(content) {
+function addBotMessage(content) {
     addMessage('bot', content);
 }
 
