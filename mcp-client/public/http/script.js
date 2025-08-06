@@ -70,7 +70,7 @@ let appConfig = {
 };
 
 let gameState = {
-    board: Array(9).fill(null),
+    board: Array(9).fill(),
     player: PLAYERS.HUMAN,
     gameOver: false,
     winner: null,
@@ -245,7 +245,7 @@ ${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 AVAILABLE TOOLS USAGE:
 - best_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
 - random_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- play_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}, "position": [position_number]"}
+- play_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}, "position": position_number"}
 - new_game: {}
 
 CURRENT BOARD STATE:
@@ -318,8 +318,8 @@ This is the user's request: "${message}"
         const tool = toolMatch ? toolMatch[1] : 'none';
         const reason = reasonMatch ? reasonMatch[1].trim() : 'No specific reason provided';
         const response = responseMatch ? responseMatch[1].trim() : null;
-        const arguments = JSON.parse(argsMatch[1]);
-        
+        const arguments = argsMatch ? JSON.parse(argsMatch[1]) : {};
+
         return {
             tool: tool || 'none',
             reason: reason,
@@ -345,7 +345,7 @@ This is the user's request: "${message}"
 }
 
 async function aiSendMessage(message, args) {
-    addBotMessage(GAME_MESSAGES.THINKING);
+    addBotMessage(GAME_MESSAGES.THINKING, false);
     
     try {
         let responseText = args.response;
@@ -414,7 +414,7 @@ This is the user's request: "${message}"
 }
 
 async function aiGetComment(message) {
-    addBotMessage(GAME_MESSAGES.THINKING);
+    addBotMessage(GAME_MESSAGES.THINKING, false);
     
     try {
         const prompt = `
@@ -629,7 +629,7 @@ function handleChatSubmit() {
 async function handleNewGameRequest() {
     const confirmed = confirm("Start new game? Current game will be lost.");
     if (!confirmed) {
-        addBotMessage("New game cancelled, please continue.");
+        addGameMessage("New game cancelled, please continue.");
         return;
     }
 
@@ -641,7 +641,7 @@ async function handleNewGameRequest() {
         
         if (toolResult && !toolResult.isError) {
             resetGame();
-            addBotMessage(`A new game was started!`);
+            addGameMessage(`A new game was started!`);
             return;
         }
         
@@ -678,7 +678,7 @@ async function handleBestMoveRequest(args) {
             if (positionMatch) {
                 const bestMove = parseInt(positionMatch[1]);
                 const success = makeMove(bestMove, mpc_args.player); // gameState changes after makeMove()
-                addBotMessage(`${mpc_args.player} played the best move in position ${bestMove}!`);
+                addGameMessage(`${mpc_args.player} played the best move in position ${bestMove}!`);
                 if (success) return;
             }
         }
@@ -716,7 +716,7 @@ async function handleRandomMoveRequest(args) {
             if (positionMatch) {
                 const randomMove = parseInt(positionMatch[1]);
                 const success = makeMove(randomMove, mpc_args.player); // gameState changes after makeMove()
-                addBotMessage(`${mpc_args.player} played a random move in position ${randomMove}!`);
+                addGameMessage(`${mpc_args.player} played a random move in position ${randomMove}!`);
                 if (success) return;
             }
         }
@@ -748,7 +748,7 @@ async function handlePlayMoveRequest(args) {
         
         if (toolResult && !toolResult.isError) {
             const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
-            addBotMessage(`${mpc_args.player} played a move in position ${args.position}!`);
+            addGameMessage(`${mpc_args.player} played a move in position ${args.position}!`);
             if (success) return;
         }
 
@@ -1058,7 +1058,7 @@ function formatMessageContent(content) {
         .replace(/\n/g, '<br>');
 }
 
-function addMessage(type, content) {
+function addMessage(type, content, preserveInHistory = true) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     
@@ -1072,27 +1072,29 @@ function addMessage(type, content) {
         timestampDiv.textContent = new Date().toLocaleTimeString();
         messageDiv.appendChild(timestampDiv);
 
-        chatHistory.push({
-            content: content,
-            type: type,
-            timestamp: new Date().toISOString()
-        });
+        if (preserveInHistory) {
+            chatHistory.push({
+                content: content,
+                type: type,
+                timestamp: new Date().toISOString()
+            });
+        }
     }
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addGameMessage(content) {
-    addMessage('system', content);
+function addGameMessage(content, preserveInHistory = true) {
+    addMessage('system', content, preserveInHistory);
 }
 
-function addUserMessage(content) {
-    addMessage('user', content);
+function addUserMessage(content, preserveInHistory = true) {
+    addMessage('user', content, preserveInHistory);
 }
 
-function addBotMessage(content) {
-    addMessage('bot', content);
+function addBotMessage(content, preserveInHistory = true) {
+    addMessage('bot', content, preserveInHistory);
 }
 
 function clearChat() {
