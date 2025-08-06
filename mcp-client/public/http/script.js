@@ -6,6 +6,9 @@ const CONFIG = {
     },
     
     ollama: {
+        high_temperature: 0.9,   // Lower for more consistent tool selection and game logic
+        med_temperature: 0.5,    // Lower for more consistent tool selection and game logic
+        low_temperature: 0.1,    // Lower for more consistent tool selection and game logic
         temperature: 0.2,        // Lower for more consistent tool selection and game logic
         maxTokens: 2048,         // Reduced from 4096 - sufficient for most responses, faster generation
         timeout: 20000,          // Increased from 15000 - allows for complex reasoning
@@ -283,7 +286,7 @@ This is the user's request: "${message}"
                 prompt: `${prompt}\n\nAssistant:`,
                 stream: false,
                 options: {
-                    temperature: CONFIG.ollama.temperature,
+                    temperature: CONFIG.ollama.low_temperature,
                     max_tokens: CONFIG.ollama.maxTokens
                 }
             })
@@ -387,7 +390,7 @@ This is the user's request: "${message}"
                     prompt: `${prompt}\n\nAssistant:`,
                     stream: false,
                     options: {
-                        temperature: CONFIG.ollama.temperature,
+                        temperature: CONFIG.ollama.med_temperature,
                         max_tokens: CONFIG.ollama.maxTokens
                     }
                 })
@@ -448,7 +451,7 @@ This is the user's request: "${message}"
                 prompt: `${prompt}\n\nAssistant:`,
                 stream: false,
                 options: {
-                    temperature: CONFIG.ollama.temperature,
+                    temperature: CONFIG.ollama.high_temperature,
                     max_tokens: CONFIG.ollama.maxTokens
                 }
             })
