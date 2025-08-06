@@ -29,7 +29,7 @@ const CONFIG = {
     },
     
     chat: {
-        maxHistoryMessages: 20
+        maxHistoryMessages: 100
     },
     
     game: {
@@ -574,14 +574,14 @@ async function handleNewGameRequest() {
         
         if (toolResult && !toolResult.isError) {
             resetGame();
-            addOpponentMessage("New game started! Your turn (X)");
+            addOpponentMessage("MCP: A new game was started!");
             return;
         }
         
-        addOpponentMessage("Sorry, I couldn't reset the game.");
+        addOpponentMessage("MCP: A problem occured while resetting the game.");
     }
     catch (error) {
-        addOpponentMessage("An error occured while resetting the game.");
+        addOpponentMessage("MCP: An error occured while resetting the game.");
     }
 }
 
@@ -611,16 +611,16 @@ async function handleBestMoveRequest(args) {
                 const success = makeMove(bestMove, gameState.player);
                 
                 if (success) {
-                    addOpponentMessage(`The best move is position ${bestMove}!`);
+                    addOpponentMessage(`MCP: Placed best move in position ${bestMove}!`);
                     return;
                 }
             }
         }
 
-        addOpponentMessage("Sorry, I couldn't make the best move.");
+        addOpponentMessage("MCP: A problem occured while making the best move.");
     }
     catch (error) {
-        addOpponentMessage("An error occured while making the best move.");
+        addOpponentMessage("MCP: An error occured while making the best move.");
     }
 }
 
@@ -648,16 +648,16 @@ async function handleRandomMoveRequest(args) {
                 const randomMove = parseInt(positionMatch[1]);
                 const success = makeMove(randomMove, gameState.player);
                 if (success) {
-                    addOpponentMessage(`Random move: position ${randomMove}!`);
+                    addOpponentMessage(`MCP: randomly played position ${randomMove}!`);
                     return;
                 }
             }
         }
 
-        addOpponentMessage("Sorry, I couldn't make a random move.");
+        addOpponentMessage("MCP: A problem occured while making a random move.");
     }
     catch (error) {
-        addOpponentMessage("An error occured while making a random move.");
+        addOpponentMessage("MCP: An error occured while making a random move.");
     }
 }
 
@@ -673,27 +673,21 @@ async function handlePlayMoveRequest(args) {
         const toolResult = await callMCPTool('play_move', {
             board: gameState.board,
             player: gameState.player,
-            position: args.position[0]
+            position: parseInt(args.position.toString())
         });
         
         if (toolResult && !toolResult.isError) {
-            const success = makeMove(args.position[0], gameState.player);
+            const success = makeMove(args.position, gameState.player);
             if (success) {
-                addOpponentMessage(`Placed move: position ${args.position}!`);
+                addOpponentMessage(`MCP: placed move in position ${args.position}!`);
                 return;
-            }
-
-            if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI) {
-                setTimeout(() => {
-                    requestAIMove();
-                }, 1000);
             }
         }
 
-        addOpponentMessage(`Sorry, I couldn't play position ${args.position[0]}.`);
+        addOpponentMessage(`MCP: A problem occured while making move ${args.position}.`);
     }
     catch (error) {
-        addOpponentMessage(`Sorry, I couldn't play position ${args.position[0]}.`);
+        addOpponentMessage(`MCP: An error occured while making move ${args.position}.`);
     }
 }
 
@@ -722,12 +716,12 @@ async function handleMcpServerUpdate() {
         new URL(newServerUrl);
     }
     catch (e) {
-        addSystemMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://127.0.0.1:8000)');
+        addGameMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://127.0.0.1:8000)');
         return;
     }
 
     appConfig.mcpServerUrl = newServerUrl;
-    addSystemMessage(`🔧 MCP server updated to: ${newServerUrl}`);
+    addGameMessage(`🔧 MCP server updated to: ${newServerUrl}`);
     await checkMCPStatus();
     await loadMCPResources();
 }
@@ -748,7 +742,6 @@ async function requestAIMove() {
     if (gameState.gameOver) return;
     
     try {
-        addGameMessage('🤖 Calling MCP Server...');
         await handleBestMoveRequest({ player: PLAYERS.AI });
     } catch (error) {
         console.error('Error requesting AI move:', error);
