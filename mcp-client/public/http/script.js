@@ -461,20 +461,19 @@ This is the user's request: "${message}"
     }
 }
 
-async function aiGetComment(message) {
+async function aiGetComment(message, player) {
     addBotMessage(GAME_MESSAGES.THINKING, false);
     
     try {
         const prompt = `
 You are a witty expert in the game of tic-tac-toe.
-The current player is the opposite of the one who made the last move.
 Direct your comment to the one who made the last move.
 If it's O, then it's you.  If it's X then it's me.
+The last move was made by: ${player}
 
 CURRENT BOARD STATE:
 - Is Game Over? ${gameState.gameOver}
 - Winner: ${gameState.winner || 'none'}
-- Current Player: ${gameState.player}
 - Board Layout (X & O - played squares, 1-9 - valid moves):
 ${visualizeBoard(gameState.board)}
 
@@ -874,7 +873,7 @@ async function requestAIMove() {
     
     try {
         await handleBestMoveRequest({ player: PLAYERS.AI });
-        await aiGetComment("Make a comment about yourself");
+        await aiGetComment("Comment on how good your last move was", PLAYERS.AI);
     }
     catch (error) {
         console.error('Error requesting AI move:', error);
@@ -1057,6 +1056,8 @@ async function processChatInput(input) {
         addGameMessage(result.reason + " [" + result.tool + "]");
     }
 
+    crrentPlayer = gameState.player
+
     switch (result.tool) {
         case 'new_game':
             await handleNewGameRequest(result.arguments);
@@ -1064,17 +1065,17 @@ async function processChatInput(input) {
             
         case 'best_move':
             await handleBestMoveRequest(result.arguments);
-            await aiGetComment(input);
+            await aiGetComment(input, crrentPlayer);
             break;
             
         case 'random_move':
             await handleRandomMoveRequest(result.arguments);
-            await aiGetComment(input);
+            await aiGetComment(input, crrentPlayer);
             break;
             
         case 'play_move':
             await handlePlayMoveRequest(result.arguments);
-            await aiGetComment(input);
+            await aiGetComment(input, crrentPlayer);
             break;
             
         case 'none':
