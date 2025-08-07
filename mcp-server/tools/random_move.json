@@ -1,0 +1,34 @@
+{
+    "name": "random_move",
+    "description": "Get a random valid move for educational or casual play. Use when user wants surprise moves, random suggestions, or less competitive gameplay. Returns position 1-9 of a randomly chosen valid move.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "board": {
+                "type": "array",
+                "items": {
+                    "type": ["string", "null"]
+                },
+                "minItems": 9,
+                "maxItems": 9,
+                "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
+            },
+            "player": {
+                "type": "string",
+                "description": "Which player to generate a random move for ('X' for human, 'O' for AI)",
+                "enum": ["X", "O"]
+            },
+            "game_over": {
+                "type": "boolean",
+                "description": "Whether the current game has ended (win/tie)",
+                "default": false
+            },
+            "winner": {
+                "type": ["string", "null"],
+                "description": "Winner of the game if ended: 'X', 'O', or null for tie/ongoing",
+                "enum": ["X", "O", null]
+            }
+        },
+        "required": ["board", "player"]
+    }
+}

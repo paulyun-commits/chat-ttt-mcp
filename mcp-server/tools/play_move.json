@@ -1,0 +1,30 @@
+{
+    "name": "play_move",
+    "description": "Execute a move at a specific board position. Use when user specifies a position number (1-9) or describes a specific cell they want to play. Validates the move is legal and updates game state.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "board": {
+                "type": "array",
+                "items": {
+                    "type": ["string", "null"]
+                },
+                "minItems": 9,
+                "maxItems": 9,
+                "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
+            },
+            "position": {
+                "type": "integer",
+                "description": "Board position to play (1-9). Layout: 1-3 top row, 4-6 middle row, 7-9 bottom row",
+                "minimum": 1,
+                "maximum": 9
+            },
+            "player": {
+                "type": "string",
+                "description": "Player making the move ('X' for human, 'O' for AI)",
+                "enum": ["X", "O"]
+            }
+        },
+        "required": ["board", "position", "player"]
+    }
+}

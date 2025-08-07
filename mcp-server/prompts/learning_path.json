@@ -1,0 +1,16 @@
+{
+    "name": "learning_path",
+    "description": "Generate a personalized learning path for improving tic-tac-toe skills",
+    "arguments": [
+        {
+            "name": "current_level",
+            "description": "Current skill assessment: beginner, intermediate, or expert",
+            "required": true
+        },
+        {
+            "name": "learning_goals",
+            "description": "Specific learning objectives or areas of interest",
+            "required": false
+        }
+    ]
+}

@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 import os
+import json
 from pathlib import Path
 from mcp.types import Tool, TextContent, CallToolResult, Resource, Prompt
 from agent import TicTacToeAgent
@@ -8,6 +9,9 @@ class MCPTools:
     def __init__(self):
         self.agent = TicTacToeAgent()
         self.resources_dir = Path(__file__).parent / "resources"
+        self.resource_config_dir = self.resources_dir / "config"
+        self.tools_dir = Path(__file__).parent / "tools"
+        self.prompts_dir = Path(__file__).parent / "prompts"
     
     def _load_resource_file(self, filename: str) -> str:
         """Load resource content from a file."""
@@ -18,214 +22,125 @@ class MCPTools:
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.read()
     
+    def _load_tool_config(self, filename: str) -> Dict[str, Any]:
+        """Load tool configuration from a JSON file."""
+        file_path = self.tools_dir / filename
+        if not file_path.exists():
+            raise FileNotFoundError(f"Tool config file not found: {file_path}")
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def _load_resource_config(self) -> Dict[str, Any]:
+        """Load resource configuration from the single resources.json file."""
+        config_file = self.resource_config_dir / "resources.json"
+        if not config_file.exists():
+            raise FileNotFoundError(f"Resource config file not found: {config_file}")
+        
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def _load_prompt_config(self, filename: str) -> Dict[str, Any]:
+        """Load prompt configuration from a JSON file."""
+        file_path = self.prompts_dir / filename
+        if not file_path.exists():
+            raise FileNotFoundError(f"Prompt config file not found: {file_path}")
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
     def get_tools(self) -> List[Tool]:
-        """Return list of available MCP tools."""
-        return [
-            Tool(
-                name="new_game",
-                description="Start a fresh tic-tac-toe game. Use when the user wants to restart, begin a new game, or clear the current board. No parameters required.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            ),
-            Tool(
-                name="best_move",
-                description="Calculate the optimal move using minimax algorithm. Use when the user asks for the best move, wants strategic advice, or requests optimal play suggestions. Returns position 1-9 of the strongest move.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "board": {
-                            "type": "array",
-                            "items": {
-                                "type": ["string", "null"]
-                            },
-                            "minItems": 9,
-                            "maxItems": 9,
-                            "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
-                        },
-                        "player": {
-                            "type": "string",
-                            "description": "Which player to calculate the best move for ('X' for human, 'O' for AI)",
-                            "enum": ["X", "O"]
-                        },
-                        "game_over": {
-                            "type": "boolean",
-                            "description": "Whether the current game has ended (win/tie)",
-                            "default": False
-                        },
-                        "winner": {
-                            "type": ["string", "null"],
-                            "description": "Winner of the game if ended: 'X', 'O', or null for tie/ongoing",
-                            "enum": ["X", "O", None]
-                        }
-                    },
-                    "required": ["board", "player"]
-                }
-            ),
-            Tool(
-                name="random_move",
-                description="Get a random valid move for educational or casual play. Use when user wants surprise moves, random suggestions, or less competitive gameplay. Returns position 1-9 of a randomly chosen valid move.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "board": {
-                            "type": "array",
-                            "items": {
-                                "type": ["string", "null"]
-                            },
-                            "minItems": 9,
-                            "maxItems": 9,
-                            "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
-                        },
-                        "player": {
-                            "type": "string",
-                            "description": "Which player to generate a random move for ('X' for human, 'O' for AI)",
-                            "enum": ["X", "O"]
-                        },
-                        "game_over": {
-                            "type": "boolean",
-                            "description": "Whether the current game has ended (win/tie)",
-                            "default": False
-                        },
-                        "winner": {
-                            "type": ["string", "null"],
-                            "description": "Winner of the game if ended: 'X', 'O', or null for tie/ongoing",
-                            "enum": ["X", "O", None]
-                        }
-                    },
-                    "required": ["board", "player"]
-                }
-            ),
-            Tool(
-                name="play_move",
-                description="Execute a move at a specific board position. Use when user specifies a position number (1-9) or describes a specific cell they want to play. Validates the move is legal and updates game state.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "board": {
-                            "type": "array",
-                            "items": {
-                                "type": ["string", "null"]
-                            },
-                            "minItems": 9,
-                            "maxItems": 9,
-                            "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
-                        },
-                        "position": {
-                            "type": "integer",
-                            "description": "Board position to play (1-9). Layout: 1-3 top row, 4-6 middle row, 7-9 bottom row",
-                            "minimum": 1,
-                            "maximum": 9
-                        },
-                        "player": {
-                            "type": "string",
-                            "description": "Player making the move ('X' for human, 'O' for AI)",
-                            "enum": ["X", "O"]
-                        }
-                    },
-                    "required": ["board", "position", "player"]
-                }
-            ),
-        ]
+        """Return list of available MCP tools loaded from configuration files."""
+        tools = []
+        
+        # Automatically discover all JSON files in the tools directory
+        if not self.tools_dir.exists():
+            print(f"Warning: Tools directory not found at {self.tools_dir}")
+            return tools
+            
+        for tool_file in self.tools_dir.glob("*.json"):
+            try:
+                config = self._load_tool_config(tool_file.name)
+                tool = Tool(
+                    name=config["name"],
+                    description=config["description"],
+                    inputSchema=config["inputSchema"]
+                )
+                tools.append(tool)
+            except Exception as e:
+                print(f"Warning: Failed to load tool config from {tool_file.name}: {e}")
+                
+        return tools
     
     def get_resources(self) -> List[Resource]:
-        """Return list of available MCP resources."""
-        return [
-            Resource(
-                uri="chatttp://game-rules",
-                name="ChatTTT Game Rules and Interface Guide",
-                description="Complete reference for ChatTTT gameplay mechanics, board layout, winning conditions, user interface features, and available interaction methods. Essential for understanding how the game works.",
-                mimeType="text/plain"
-            ),
-            Resource(
-                uri="chatttp://strategy-guide", 
-                name="Tic-Tac-Toe Strategy and Tactics",
-                description="Advanced strategic guidance for optimal tic-tac-toe play including opening theory, tactical patterns, endgame principles, and minimax algorithm insights. Useful for explaining game concepts to users.",
-                mimeType="text/markdown"
-            ),
-            Resource(
-                uri="chatttp://ai-algorithms",
-                name="Technical Implementation Details",
-                description="In-depth technical documentation of ChatTTT's AI architecture, minimax algorithm implementation, MCP integration, and language model capabilities. For technical discussions about how the system works.",
-                mimeType="text/markdown"
-            ),
-            Resource(
-                uri="chatttp://commands-reference",
-                name="Natural Language Interface Examples",
-                description="Comprehensive guide showing how users can interact with ChatTTT using natural conversation, including example phrases, command patterns, and troubleshooting common interaction issues.",
-                mimeType="text/plain"
-            )
-        ]
+        """Return list of available MCP resources loaded from configuration file."""
+        resources = []
+        
+        # Load resources from the single resources.json file
+        if not self.resource_config_dir.exists():
+            print(f"Warning: Resource config directory not found at {self.resource_config_dir}")
+            return resources
+            
+        try:
+            config = self._load_resource_config()
+            resource_configs = config.get("resources", [])
+            
+            for resource_config in resource_configs:
+                try:
+                    resource = Resource(
+                        uri=resource_config["uri"],
+                        name=resource_config["name"],
+                        description=resource_config["description"],
+                        mimeType=resource_config["mimeType"]
+                    )
+                    resources.append(resource)
+                except Exception as e:
+                    print(f"Warning: Failed to create resource from config: {e}")
+                    
+        except Exception as e:
+            print(f"Warning: Failed to load resource config: {e}")
+                
+        return resources
     
     def get_prompts(self) -> List[Prompt]:
-        """Return list of available MCP prompts."""
-        return [
-            Prompt(
-                name="strategy_coach",
-                description="Get personalized tic-tac-toe strategy coaching based on current game state and skill level",
-                arguments=[
-                    {
-                        "name": "board_state",
-                        "description": "Current board state as 9-element array",
-                        "required": False
-                    },
-                    {
-                        "name": "skill_level",
-                        "description": "Player skill level: beginner, intermediate, or expert",
-                        "required": False
-                    },
-                    {
-                        "name": "focus_area",
-                        "description": "Specific area to focus on: opening, tactics, endgame, or general",
-                        "required": False
-                    }
-                ]
-            ),
-            Prompt(
-                name="game_analyzer",
-                description="Analyze a completed or ongoing tic-tac-toe game and provide detailed feedback",
-                arguments=[
-                    {
-                        "name": "move_history",
-                        "description": "Sequence of moves made in the game",
-                        "required": True
-                    },
-                    {
-                        "name": "analysis_depth",
-                        "description": "Level of analysis: quick, detailed, or comprehensive",
-                        "required": False
-                    }
-                ]
-            ),
-            Prompt(
-                name="learning_path",
-                description="Generate a personalized learning path for improving tic-tac-toe skills",
-                arguments=[
-                    {
-                        "name": "current_level",
-                        "description": "Current skill assessment: beginner, intermediate, or expert",
-                        "required": True
-                    },
-                    {
-                        "name": "learning_goals",
-                        "description": "Specific learning objectives or areas of interest",
-                        "required": False
-                    }
-                ]
-            )
-        ]
+        """Return list of available MCP prompts loaded from configuration files."""
+        prompts = []
+        
+        # Automatically discover all JSON files in the prompts directory
+        if not self.prompts_dir.exists():
+            print(f"Warning: Prompts directory not found at {self.prompts_dir}")
+            return prompts
+            
+        for prompt_file in self.prompts_dir.glob("*.json"):
+            try:
+                config = self._load_prompt_config(prompt_file.name)
+                prompt = Prompt(
+                    name=config["name"],
+                    description=config["description"],
+                    arguments=config["arguments"]
+                )
+                prompts.append(prompt)
+            except Exception as e:
+                print(f"Warning: Failed to load prompt config from {prompt_file.name}: {e}")
+                
+        return prompts
     
     async def get_resource_content(self, uri: str):
         """Get the content of a specific resource."""
         try:
-            resource_mapping = {
-                "chatttp://game-rules": "game-rules.md",
-                "chatttp://strategy-guide": "strategy-guide.md", 
-                "chatttp://ai-algorithms": "ai-algorithms.md",
-                "chatttp://commands-reference": "commands-reference.md"
-            }
+            # Build resource mapping dynamically from the single resources.json file
+            resource_mapping = {}
+            
+            if self.resource_config_dir.exists():
+                try:
+                    config = self._load_resource_config()
+                    resource_configs = config.get("resources", [])
+                    
+                    for resource_config in resource_configs:
+                        resource_mapping[resource_config["uri"]] = resource_config["filename"]
+                        
+                except Exception as e:
+                    print(f"Warning: Failed to load resource config: {e}")
             
             if uri in resource_mapping:
                 return self._load_resource_file(resource_mapping[uri])

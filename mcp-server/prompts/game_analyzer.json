@@ -1,0 +1,16 @@
+{
+    "name": "game_analyzer",
+    "description": "Analyze a completed or ongoing tic-tac-toe game and provide detailed feedback",
+    "arguments": [
+        {
+            "name": "move_history",
+            "description": "Sequence of moves made in the game",
+            "required": true
+        },
+        {
+            "name": "analysis_depth",
+            "description": "Level of analysis: quick, detailed, or comprehensive",
+            "required": false
+        }
+    ]
+}

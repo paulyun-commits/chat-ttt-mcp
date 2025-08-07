@@ -1,0 +1,34 @@
+{
+    "name": "best_move",
+    "description": "Calculate the optimal move using minimax algorithm. Use when the user asks for the best move, wants strategic advice, or requests optimal play suggestions. Returns position 1-9 of the strongest move.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "board": {
+                "type": "array",
+                "items": {
+                    "type": ["string", "null"]
+                },
+                "minItems": 9,
+                "maxItems": 9,
+                "description": "Current board state as array of 9 elements. Each element is 'X', 'O', or null for empty cells. Index 0 = position 1, index 8 = position 9."
+            },
+            "player": {
+                "type": "string",
+                "description": "Which player to calculate the best move for ('X' for human, 'O' for AI)",
+                "enum": ["X", "O"]
+            },
+            "game_over": {
+                "type": "boolean",
+                "description": "Whether the current game has ended (win/tie)",
+                "default": false
+            },
+            "winner": {
+                "type": ["string", "null"],
+                "description": "Winner of the game if ended: 'X', 'O', or null for tie/ongoing",
+                "enum": ["X", "O", null]
+            }
+        },
+        "required": ["board", "player"]
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "name": "new_game",
+    "description": "Start a fresh tic-tac-toe game. Use when the user wants to restart, begin a new game, or clear the current board. No parameters required.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+}

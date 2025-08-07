@@ -1,0 +1,21 @@
+{
+    "name": "strategy_coach",
+    "description": "Get personalized tic-tac-toe strategy coaching based on current game state and skill level",
+    "arguments": [
+        {
+            "name": "board_state",
+            "description": "Current board state as 9-element array",
+            "required": false
+        },
+        {
+            "name": "skill_level",
+            "description": "Player skill level: beginner, intermediate, or expert",
+            "required": false
+        },
+        {
+            "name": "focus_area",
+            "description": "Specific area to focus on: opening, tactics, endgame, or general",
+            "required": false
+        }
+    ]
+}
