@@ -89,8 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeElements();
     setupEventListeners();
     loadConfiguration();
-    loadMCPResources();
-    checkMCPStatus();
+    checkMCPStatus(); // This will load both capabilities and resources
     checkOllamaStatus();
     resetGame();
 });
@@ -217,7 +216,6 @@ function setupEventListeners() {
     window.setInterval(async () => {
         await checkOllamaStatus();
         await checkMCPStatus();
-        await loadMCPResources();
     }, CONFIG.mcp.statusCheckInterval);
 
     restoreServicesPanelState();
@@ -227,10 +225,34 @@ function setupEventListeners() {
 
 async function aiChooseTool(message) {
     try {
-        const [mcpTools, mcpResources] = await Promise.all([
-            getMCPCapabilities() || [],
-            getMCPResources() || []
+        // Fetch all MCP data in parallel with a single /info call
+        const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
+            fetch(`${appConfig.mcpServerUrl}/info`),
+            fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
+            fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
         ]);
+        
+        if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
+            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+        }
+
+        const [infoData, toolsData, resourcesData] = await Promise.all([
+            infoResponse.json(),
+            toolsResponse.json(),
+            resourcesResponse.json()
+        ]);
+
+        const mcpTools = {
+            status: 'connected',
+            serverInfo: infoData,
+            tools: toolsData.tools || []
+        };
+
+        const mcpResources = {
+            status: 'connected',
+            serverInfo: infoData,
+            resources: resourcesData.resources || []
+        };
         
         const prompt = `
 You are a smart assistant for a tic-tac-toe game that can select tools.
@@ -328,7 +350,7 @@ This is the user's request: "${message}"
             arguments: arguments || {},
             response: response,
             availableTools: mcpTools.tools.map(t => t.name),
-            availableResources: mcpResources,
+            availableResources: mcpResources.resources,
             analysis: aiResponse
         };
     }
@@ -353,10 +375,34 @@ async function aiSendMessage(message, args) {
         let responseText = args.response;
 
         if (!responseText) {
-            const [mcpTools, mcpResources] = await Promise.all([
-                getMCPCapabilities() || [],
-                getMCPResources() || []
+            // Fetch all MCP data in parallel with a single /info call
+            const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
+                fetch(`${appConfig.mcpServerUrl}/info`),
+                fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
+                fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
             ]);
+            
+            if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
+                throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+            }
+
+            const [infoData, toolsData, resourcesData] = await Promise.all([
+                infoResponse.json(),
+                toolsResponse.json(),
+                resourcesResponse.json()
+            ]);
+
+            const mcpTools = {
+                status: 'connected',
+                serverInfo: infoData,
+                tools: toolsData.tools || []
+            };
+
+            const mcpResources = {
+                status: 'connected',
+                serverInfo: infoData,
+                resources: resourcesData.resources || []
+            };
 
             const prompt = `
 You are a smart assistant for a tic-tac-toe game that can have conversations.
@@ -590,30 +636,46 @@ async function getMCPResources() {
     }
 }
 
-async function loadMCPResources() {
+async function checkMCPStatus() {
     try {
-        const resources = await getMCPResources();
+        // Fetch all MCP data in parallel with a single /info call
+        const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
+            fetch(`${appConfig.mcpServerUrl}/info`),
+            fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
+            fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
+        ]);
+        
+        if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
+            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+        }
+
+        const [infoData, toolsData, resourcesData] = await Promise.all([
+            infoResponse.json(),
+            toolsResponse.json(),
+            resourcesResponse.json()
+        ]);
+
+        const capabilities = {
+            status: 'connected',
+            serverInfo: infoData,
+            tools: toolsData.tools || []
+        };
+
+        const resources = {
+            status: 'connected',
+            serverInfo: infoData,
+            resources: resourcesData.resources || []
+        };
+
+        updateMCPStatus(capabilities.status, { ...capabilities, resources: resources.resources });
         updateResourcesPanel(resources.resources);
         restoreServicesPanelState();
     }
     catch (error) {
-        console.error('Error loading MCP resources:', error);
-        updateResourcesPanel([]);
-        restoreServicesPanelState();
-    }
-}
-
-async function checkMCPStatus() {
-    try {
-        const [capabilities, resources] = await Promise.all([
-            getMCPCapabilities(),
-            getMCPResources()
-        ]);
-        updateMCPStatus(capabilities.status, { ...capabilities, ...resources.resources });
-    }
-    catch (error) {
         console.error('Error checking MCP status:', error);
         updateMCPStatus('error', { error: error.message });
+        updateResourcesPanel([]);
+        restoreServicesPanelState();
     }
 }
 
@@ -793,7 +855,6 @@ async function handleMcpServerUpdate() {
     appConfig.mcpServerUrl = newServerUrl;
     addGameMessage(`🔧 MCP server updated to: ${newServerUrl}`);
     await checkMCPStatus();
-    await loadMCPResources();
 }
 
 function handleModelChange() {
