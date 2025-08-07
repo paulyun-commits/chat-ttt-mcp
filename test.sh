@@ -14,10 +14,10 @@ fi
 
 # Test if MCP server is running
 echo "🤖 Testing MCP Server..."
-if curl -s http://127.0.0.1:8000/health > /dev/null; then
+if curl -s http://127.0.0.1:8000/info > /dev/null; then
     echo "✅ MCP Server is responding"
-    echo "📊 Health Status:"
-    curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+    echo "📊 Server Info:"
+    curl -s http://127.0.0.1:8000/info | python3 -m json.tool
 else
     echo "❌ MCP Server is not responding on port 8000"
 fi

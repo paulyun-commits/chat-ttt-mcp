@@ -60,8 +60,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 - `POST /mcp/resources/read`: Read resource content
 
 ### Additional Endpoints
-- `GET /health`: Health check endpoint
-- `GET /info`: Server information and capabilities
+- `GET /info`: Server information, capabilities, and health status
 
 ## Files
 

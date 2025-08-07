@@ -151,15 +151,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "chattt-mcp-http-server",
-        "mcp_server_available": mcp_client.process is not None and mcp_client.process.returncode is None
-    }
-
 @app.get("/info")
 async def get_server_info():
     """Get server information - for backward compatibility with existing clients."""
@@ -167,6 +158,8 @@ async def get_server_info():
         "name": "chattt-mcp-server",
         "version": "1.0.0",
         "description": "MCP server for ChatTTT game with AI strategy",
+        "status": "healthy",
+        "mcp_server_available": mcp_client.process is not None and mcp_client.process.returncode is None,
         "capabilities": {
             "tools": True,
             "resources": True,
