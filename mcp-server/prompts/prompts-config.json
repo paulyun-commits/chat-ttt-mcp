@@ -1,0 +1,60 @@
+{
+    "prompts": [
+        {
+            "name": "strategy_coach",
+            "description": "Get personalized tic-tac-toe strategy coaching based on current game state and skill level",
+            "template_file": "templates/strategy_coach.txt",
+            "arguments": [
+                {
+                    "name": "board_state",
+                    "description": "Current board state as 9-element array",
+                    "required": false
+                },
+                {
+                    "name": "skill_level",
+                    "description": "Player skill level: beginner, intermediate, or expert",
+                    "required": false
+                },
+                {
+                    "name": "focus_area",
+                    "description": "Specific area to focus on: opening, tactics, endgame, or general",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "name": "game_analyzer",
+            "description": "Analyze a completed or ongoing tic-tac-toe game and provide detailed feedback",
+            "template_file": "templates/game_analyzer.txt",
+            "arguments": [
+                {
+                    "name": "move_history",
+                    "description": "Sequence of moves made in the game",
+                    "required": true
+                },
+                {
+                    "name": "analysis_depth",
+                    "description": "Level of analysis: quick, detailed, or comprehensive",
+                    "required": false
+                }
+            ]
+        },
+        {
+            "name": "learning_path",
+            "description": "Generate a personalized learning path for improving tic-tac-toe skills",
+            "template_file": "templates/learning_path.txt",
+            "arguments": [
+                {
+                    "name": "current_level",
+                    "description": "Current skill assessment: beginner, intermediate, or expert",
+                    "required": true
+                },
+                {
+                    "name": "learning_goals",
+                    "description": "Specific learning objectives or areas of interest",
+                    "required": false
+                }
+            ]
+        }
+    ]
+}
