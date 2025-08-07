@@ -40,9 +40,9 @@ cd ..
 
 echo ""
 echo "🎉 ChatTTT is ready!"
-echo "📄 HTTP MCP version: http://127.0.0.1:3000"
-echo "🔌 Stdio MCP version: http://127.0.0.1:3000/stdio"
-echo "🌉 MCP Bridge: http://127.0.0.1:3000"
+echo "📄 HTTP MCP version: http://localhost:3000"
+echo "🔌 Stdio MCP version: http://localhost:3000/stdio"
+echo "🌉 MCP Bridge: http://localhost:3000"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 

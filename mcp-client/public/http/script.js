@@ -1,6 +1,6 @@
 const CONFIG = {
     server: {
-        mcpServerUrl: 'http://127.0.0.1:8000',
+        mcpServerUrl: 'http://localhost:8000',
         ollamaHost: 'http://omega:11434',
         ollamaModel: 'llama3.2:latest'
     },
@@ -847,7 +847,7 @@ async function handleMcpServerUpdate() {
         new URL(newServerUrl);
     }
     catch (e) {
-        addGameMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://127.0.0.1:8000)');
+        addGameMessage('❌ Invalid URL format. Please enter a valid URL (e.g., http://localhost:8000)');
         return;
     }
 

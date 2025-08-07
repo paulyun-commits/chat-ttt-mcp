@@ -22,5 +22,5 @@ pip install -r requirements.txt
 pip install -r requirements-http.txt
 
 # Start the HTTP server
-echo "Starting HTTP server on http://127.0.0.1:8000"
+echo "Starting HTTP server on http://localhost:8000"
 python http_server.py

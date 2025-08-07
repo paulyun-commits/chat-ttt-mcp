@@ -14,5 +14,5 @@ app.use(express.static(path.join(__dirname, 'public')));
 const PORT = config.port;
 app.listen(PORT, () => {
     console.log(`ChatTTT server running on port ${PORT}`);
-    console.log(`Game available at: http://127.0.0.1:${PORT}`);
+    console.log(`Game available at: http://localhost:${PORT}`);
 });
