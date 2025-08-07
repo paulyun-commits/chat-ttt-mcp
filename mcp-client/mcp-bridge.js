@@ -9,6 +9,7 @@ class MCPStdioBridge {
         this.serverInfo = null;
         this.tools = [];
         this.resources = [];
+        this.prompts = [];
     }
 
     setupRoutes(app) {
@@ -16,7 +17,12 @@ class MCPStdioBridge {
         app.get('/mcp/status', (req, res) => {
             res.json({
                 status: this.mcpProcess ? 'connected' : 'disconnected',
-                serverInfo: this.serverInfo
+                serverInfo: this.serverInfo,
+                capabilities: {
+                    tools: this.tools.length,
+                    resources: this.resources.length,
+                    prompts: this.prompts.length
+                }
             });
         });
 
@@ -44,7 +50,12 @@ class MCPStdioBridge {
         app.post('/mcp/tools/call', async (req, res) => {
             try {
                 const { name, arguments: args } = req.body;
-                const result = await this.callTool(name, args);
+                
+                if (!name) {
+                    return res.status(400).json({ error: 'Tool name is required' });
+                }
+                
+                const result = await this.callTool(name, args || {});
                 res.json(result);
             } catch (error) {
                 res.status(500).json({ error: error.message });
@@ -65,11 +76,74 @@ class MCPStdioBridge {
         app.post('/mcp/resources/content', async (req, res) => {
             try {
                 const { uri } = req.body;
+                
+                if (!uri) {
+                    return res.status(400).json({ error: 'Resource URI is required' });
+                }
+                
                 const content = await this.readResource(uri);
                 res.json({ content });
             } catch (error) {
                 res.status(500).json({ error: error.message });
             }
+        });
+
+        // List prompts
+        app.get('/mcp/prompts', async (req, res) => {
+            try {
+                const prompts = await this.listPrompts();
+                res.json({ prompts });
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        // Get prompt content
+        app.post('/mcp/prompts/get', async (req, res) => {
+            try {
+                const { name, arguments: args } = req.body;
+                
+                if (!name) {
+                    return res.status(400).json({ error: 'Prompt name is required' });
+                }
+                
+                const prompt = await this.getPrompt(name, args || {});
+                res.json(prompt);
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        // Get all MCP data (tools, resources, prompts)
+        app.get('/mcp/all', async (req, res) => {
+            try {
+                const [tools, resources, prompts] = await Promise.all([
+                    this.listTools(),
+                    this.listResources(),
+                    this.listPrompts()
+                ]);
+                res.json({ tools, resources, prompts });
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        // Get server capabilities
+        app.get('/mcp/capabilities', (req, res) => {
+            res.json({
+                tools: {
+                    listTools: true,
+                    callTool: true
+                },
+                resources: {
+                    listResources: true,
+                    readResource: true
+                },
+                prompts: {
+                    listPrompts: true,
+                    getPrompt: true
+                }
+            });
         });
     }
 
@@ -85,7 +159,7 @@ class MCPStdioBridge {
             const serverPath = path.join(__dirname, '..', 'mcp-server', 'server.py');
             const pythonPath = path.join(__dirname, '..', 'mcp-server', 'venv', 'bin', 'python');
             
-            // Try to use virtual environment python, fallback to system python
+            // Use virtual environment python
             const pythonCmd = require('fs').existsSync(pythonPath) ? pythonPath : 'python3';
             
             this.mcpProcess = spawn(pythonCmd, [serverPath], {
@@ -100,7 +174,8 @@ class MCPStdioBridge {
                 const chunk = data.toString();
                 if (!initialized) {
                     initBuffer += chunk;
-                    if (initBuffer.includes('Initialized') || chunk.includes('{"jsonrpc"')) {
+                    // Look for the server info log message OR a JSON-RPC response
+                    if (initBuffer.includes('Starting chattt-ai') || chunk.includes('{"jsonrpc"')) {
                         initialized = true;
                         console.log('MCP server initialized');
                         // Use async/await to ensure errors propagate
@@ -121,13 +196,33 @@ class MCPStdioBridge {
             });
 
             this.mcpProcess.stderr.on('data', (data) => {
-                console.error('MCP stderr:', data.toString());
+                const errorOutput = data.toString();
+                console.error('MCP stderr:', errorOutput);
+                
+                // Check if this is the startup message (not an error)
+                if (!initialized && errorOutput.includes('Starting chattt-ai')) {
+                    console.log('MCP server startup detected from stderr');
+                    initialized = true;
+                    // Use async/await to ensure errors propagate
+                    (async () => {
+                        try {
+                            await this.initializeMCP();
+                            resolve();
+                        }
+                        catch (err) {
+                            reject(err);
+                        }
+                    })();
+                }
             });
 
             this.mcpProcess.on('close', (code) => {
                 console.log(`MCP process exited with code ${code}`);
                 this.mcpProcess = null;
                 this.pendingRequests.clear();
+                this.tools = [];
+                this.resources = [];
+                this.prompts = [];
             });
 
             this.mcpProcess.on('error', (error) => {
@@ -141,21 +236,22 @@ class MCPStdioBridge {
                 if (!initialized) {
                     reject(new Error('MCP server initialization timeout'));
                 }
-            }, 15000);
+            }, 30000);
         });
     }
 
     async initializeMCP() {
         try {
             // Wait a bit for the server to be ready
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Initialize the MCP session
             const initResult = await this.sendMCPRequest('initialize', {
                 protocolVersion: '2024-11-05',
                 capabilities: {
                     tools: {},
-                    resources: {}
+                    resources: {},
+                    prompts: {}
                 },
                 clientInfo: {
                     name: 'ChatTTT-Bridge',
@@ -165,16 +261,17 @@ class MCPStdioBridge {
             this.serverInfo = initResult;
 
             // Send initialized notification (no response expected)
-            await this.sendMCPNotification('initialized', {});
+            await this.sendMCPNotification('notifications/initialized', {});
 
-            // Wait a bit more after initialization
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait longer after initialization to ensure server is ready
+            await new Promise(resolve => setTimeout(resolve, 3000));
 
             // Get server capabilities
             await this.listTools();
             await this.listResources();
+            await this.listPrompts();
             
-            console.log('MCP session initialized successfully');
+            console.log(`MCP session initialized successfully with ${this.tools.length} tools, ${this.resources.length} resources, and ${this.prompts.length} prompts`);
         } catch (error) {
             console.error('Failed to initialize MCP session:', error);
             throw error;
@@ -298,6 +395,30 @@ class MCPStdioBridge {
         }
     }
 
+    async listPrompts() {
+        try {
+            const result = await this.sendMCPRequest('prompts/list', {});
+            this.prompts = result.prompts || [];
+            return this.prompts;
+        } catch (error) {
+            console.error('Failed to list prompts:', error);
+            return [];
+        }
+    }
+
+    async getPrompt(name, args = {}) {
+        try {
+            const result = await this.sendMCPRequest('prompts/get', {
+                name,
+                arguments: args
+            });
+            return result;
+        } catch (error) {
+            console.error(`Failed to get prompt ${name}:`, error);
+            throw error;
+        }
+    }
+
     async restartMCP() {
         console.log('Restarting MCP connection...');
         
@@ -307,6 +428,9 @@ class MCPStdioBridge {
         }
 
         this.pendingRequests.clear();
+        this.tools = [];
+        this.resources = [];
+        this.prompts = [];
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a bit
         await this.startMCP();
     }
