@@ -513,7 +513,7 @@ function removeThinkingMessage() {
 
 async function callMCPTool(toolName, args) {
     try {
-        const response = await fetch(`${appConfig.mcpServerUrl}/call-tool`, {
+        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/call`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -537,7 +537,7 @@ async function callMCPTool(toolName, args) {
 async function getMCPCapabilities() {
     try {
         const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
-        const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/tools`);
+        const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`);
         
         if (!infoResponse.ok || !toolsResponse.ok) {
             throw new Error(`HTTP ${infoResponse.status || toolsResponse.status}`);
@@ -565,7 +565,7 @@ async function getMCPCapabilities() {
 async function getMCPResources() {
     try {
         const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
-        const resourcesResponse = await fetch(`${appConfig.mcpServerUrl}/resources`);
+        const resourcesResponse = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`);
 
         if (!infoResponse.ok || !resourcesResponse.ok) {
             throw new Error(`HTTP ${infoResponse.status || resourcesResponse.status}`);
@@ -1274,12 +1274,20 @@ async function showResourceContent(uri, name) {
         modalBody.innerHTML = '<div class="loading">Loading resource content...</div>';
         modal.style.display = 'block';
         
-        // Fetch resource content
-        const response = await fetch(`${appConfig.mcpServerUrl}/resources/${encodeURIComponent(uri)}`);
+        // Fetch resource content using standard MCP endpoint
+        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/read`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                uri: uri
+            })
+        });
         
         if (response.ok) {
             const data = await response.json();
-            const content = data.content || 'No content available';
+            const content = data.contents?.[0]?.text || 'No content available';
             
             // Convert markdown-style content to HTML
             const htmlContent = formatResourceContent(content);

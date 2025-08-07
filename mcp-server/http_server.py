@@ -20,9 +20,8 @@ class CallToolRequest(BaseModel):
     name: str
     arguments: Dict[str, Any]
 
-class CallToolResponse(BaseModel):
-    content: List[Dict[str, Any]]
-    isError: bool = False
+class ReadResourceRequest(BaseModel):
+    uri: str
 
 class MCPClient:
     """Client to communicate with the MCP server process."""
@@ -163,7 +162,7 @@ async def health_check():
 
 @app.get("/info")
 async def get_server_info():
-    """Get server information - required for MCP discovery."""
+    """Get server information - for backward compatibility with existing clients."""
     return {
         "name": "chattt-mcp-server",
         "version": "1.0.0",
@@ -173,90 +172,89 @@ async def get_server_info():
             "resources": True,
             "prompts": False
         },
-        "protocol_version": "1.0",
-        "server_info": {
+        "protocolVersion": "2024-11-05",
+        "serverInfo": {
             "name": "chattt-mcp-server",
             "version": "1.0.0"
         }
     }
 
-@app.get("/tools")
-async def get_tools():
-    """Get available MCP tools."""
+# Standard MCP HTTP Transport Endpoints
+@app.post("/mcp/initialize")
+async def mcp_initialize():
+    """MCP session initialization endpoint."""
+    return {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+            "tools": True,
+            "resources": True,
+            "prompts": False
+        },
+        "serverInfo": {
+            "name": "chattt-mcp-server",
+            "version": "1.0.0"
+        }
+    }
+
+@app.get("/mcp/tools/list")
+async def mcp_list_tools():
+    """Standard MCP endpoint to list available tools."""
     try:
         tools = mcp_client.get_available_tools()
         return {
             "tools": tools
         }
     except Exception as e:
-        logger.error(f"Error getting tools: {e}")
+        logger.error(f"Error listing MCP tools: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.get("/resources")
-async def get_resources():
-    """Get available MCP resources."""
-    try:
-        resources = mcp_client.get_available_resources()
-        return {
-            "resources": resources
-        }
-    except Exception as e:
-        logger.error(f"Error getting resources: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.get("/api/resources")
-async def get_api_resources():
-    """Get available MCP resources (API endpoint)."""
-    try:
-        resources = mcp_client.get_available_resources()
-        return {
-            "resources": resources
-        }
-    except Exception as e:
-        logger.error(f"Error getting resources: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.get("/resources/{resource_uri:path}")
-async def read_resource(resource_uri: str):
-    """Read the content of a specific resource."""
-    try:
-        content = await mcp_client.read_resource_content(resource_uri)
-        return {
-            "content": content
-        }
-    except Exception as e:
-        logger.error(f"Error reading resource {resource_uri}: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.get("/api/resources/{resource_uri:path}")
-async def read_api_resource(resource_uri: str):
-    """Read the content of a specific resource (API endpoint)."""
-    try:
-        content = await mcp_client.read_resource_content(resource_uri)
-        return {
-            "content": content
-        }
-    except Exception as e:
-        logger.error(f"Error reading resource {resource_uri}: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.post("/call-tool", response_model=CallToolResponse)
-async def call_tool_endpoint(request: CallToolRequest):
-    """Generic endpoint to call any MCP tool."""
+@app.post("/mcp/tools/call")
+async def mcp_call_tool(request: CallToolRequest):
+    """Standard MCP endpoint to call a tool."""
     try:
         result = await mcp_client.call_mcp_tool(request.name, request.arguments)
         
-        return CallToolResponse(
-            content=result["content"],
-            isError=result.get("isError", False)
-        )
+        return {
+            "content": result["content"],
+            "isError": result.get("isError", False)
+        }
         
     except Exception as e:
-        logger.error(f"Error in call-tool endpoint: {e}")
-        return CallToolResponse(
-            content=[{"type": "text", "text": f"Error calling tool {request.name}: {str(e)}"}],
-            isError=True
-        )
+        logger.error(f"Error calling MCP tool {request.name}: {e}")
+        return {
+            "content": [{"type": "text", "text": f"Error: {str(e)}"}],
+            "isError": True
+        }
+
+@app.get("/mcp/resources/list")
+async def mcp_list_resources():
+    """Standard MCP endpoint to list available resources."""
+    try:
+        resources = mcp_client.get_available_resources()
+        return {
+            "resources": resources
+        }
+    except Exception as e:
+        logger.error(f"Error listing MCP resources: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/mcp/resources/read")
+async def mcp_read_resource(request: ReadResourceRequest):
+    """Standard MCP endpoint to read a resource."""
+    try:
+        content = await mcp_client.read_resource_content(request.uri)
+        return {
+            "contents": [
+                {
+                    "uri": request.uri,
+                    "mimeType": "text/plain",
+                    "text": content
+                }
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error reading MCP resource {request.uri}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(

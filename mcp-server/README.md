@@ -52,9 +52,16 @@ OLLAMA_BASE_URL=http://localhost:11434
 
 ## API Endpoints (HTTP Server)
 
-- `POST /tools/{tool_name}`: Execute MCP tool
-- `GET /resources`: List available resources
-- `GET /resources/{uri}`: Get resource content
+### Standard MCP Endpoints
+- `POST /mcp/initialize`: Initialize MCP session
+- `GET /mcp/tools/list`: List available tools
+- `POST /mcp/tools/call`: Execute MCP tool
+- `GET /mcp/resources/list`: List available resources
+- `POST /mcp/resources/read`: Read resource content
+
+### Additional Endpoints
+- `GET /health`: Health check endpoint
+- `GET /info`: Server information and capabilities
 
 ## Files
 
