@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Optional
 import json
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 from mcp.types import Tool, TextContent, CallToolResult, Resource, Prompt
 from agent import TicTacToeAgent
@@ -9,7 +9,6 @@ class MCPTools:
         self.agent = TicTacToeAgent()
         self.tools_dir = Path(__file__).parent / "tools"
         self.resources_dir = Path(__file__).parent / "resources"
-        self.resource_docs_dir = self.resources_dir / "docs"
         self.prompts_dir = Path(__file__).parent / "prompts"
         
     def _load_tool_config(self, filename: str) -> Dict[str, Any]:
@@ -23,7 +22,7 @@ class MCPTools:
 
     def _load_resource_file(self, filename: str) -> str:
         """Load resource content from a file."""
-        file_path = self.resource_docs_dir / filename
+        file_path = self.resources_dir / filename
         if not file_path.exists():
             raise FileNotFoundError(f"Resource file not found: {file_path}")
         

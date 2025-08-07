@@ -5,28 +5,28 @@
             "name": "ChatTTT Game Rules and Interface Guide",
             "description": "Complete reference for ChatTTT gameplay mechanics, board layout, winning conditions, user interface features, and available interaction methods. Essential for understanding how the game works.",
             "mimeType": "text/plain",
-            "filename": "game-rules.md"
+            "filename": "docs/game-rules.md"
         },
         {
             "uri": "chatttp://strategy-guide",
             "name": "Tic-Tac-Toe Strategy and Tactics",
             "description": "Advanced strategic guidance for optimal tic-tac-toe play including opening theory, tactical patterns, endgame principles, and minimax algorithm insights. Useful for explaining game concepts to users.",
             "mimeType": "text/markdown",
-            "filename": "strategy-guide.md"
+            "filename": "docs/strategy-guide.md"
         },
         {
             "uri": "chatttp://ai-algorithms",
             "name": "Technical Implementation Details",
             "description": "In-depth technical documentation of ChatTTT's AI architecture, minimax algorithm implementation, MCP integration, and language model capabilities. For technical discussions about how the system works.",
             "mimeType": "text/markdown",
-            "filename": "ai-algorithms.md"
+            "filename": "docs/ai-algorithms.md"
         },
         {
             "uri": "chatttp://commands-reference",
             "name": "Natural Language Interface Examples",
             "description": "Comprehensive guide showing how users can interact with ChatTTT using natural conversation, including example phrases, command patterns, and troubleshooting common interaction issues.",
             "mimeType": "text/plain",
-            "filename": "commands-reference.md"
+            "filename": "docs/commands-reference.md"
         }
     ]
 }
