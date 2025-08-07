@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from mcp.types import Tool, TextContent, CallToolResult, Resource
+from mcp.types import Tool, TextContent, CallToolResult, Resource, Prompt
 from agent import TicTacToeAgent
 
 class MCPTools:
@@ -144,6 +144,64 @@ class MCPTools:
                 name="Natural Language Interface Examples",
                 description="Comprehensive guide showing how users can interact with ChatTTT using natural conversation, including example phrases, command patterns, and troubleshooting common interaction issues.",
                 mimeType="text/plain"
+            )
+        ]
+    
+    def get_prompts(self) -> List[Prompt]:
+        """Return list of available MCP prompts."""
+        return [
+            Prompt(
+                name="strategy_coach",
+                description="Get personalized tic-tac-toe strategy coaching based on current game state and skill level",
+                arguments=[
+                    {
+                        "name": "board_state",
+                        "description": "Current board state as 9-element array",
+                        "required": False
+                    },
+                    {
+                        "name": "skill_level",
+                        "description": "Player skill level: beginner, intermediate, or expert",
+                        "required": False
+                    },
+                    {
+                        "name": "focus_area",
+                        "description": "Specific area to focus on: opening, tactics, endgame, or general",
+                        "required": False
+                    }
+                ]
+            ),
+            Prompt(
+                name="game_analyzer",
+                description="Analyze a completed or ongoing tic-tac-toe game and provide detailed feedback",
+                arguments=[
+                    {
+                        "name": "move_history",
+                        "description": "Sequence of moves made in the game",
+                        "required": True
+                    },
+                    {
+                        "name": "analysis_depth",
+                        "description": "Level of analysis: quick, detailed, or comprehensive",
+                        "required": False
+                    }
+                ]
+            ),
+            Prompt(
+                name="learning_path",
+                description="Generate a personalized learning path for improving tic-tac-toe skills",
+                arguments=[
+                    {
+                        "name": "current_level",
+                        "description": "Current skill assessment: beginner, intermediate, or expert",
+                        "required": True
+                    },
+                    {
+                        "name": "learning_goals",
+                        "description": "Specific learning objectives or areas of interest",
+                        "required": False
+                    }
+                ]
             )
         ]
     
@@ -795,6 +853,163 @@ This natural language system makes ChatTTT accessible to users regardless of the
                 
         except Exception as e:
             raise Exception(f"Error reading resource {uri}: {str(e)}")
+    
+    async def get_prompt_content(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Get the content of a specific prompt."""
+        try:
+            if name == "strategy_coach":
+                return await self._strategy_coach_prompt(arguments or {})
+            elif name == "game_analyzer":
+                return await self._game_analyzer_prompt(arguments or {})
+            elif name == "learning_path":
+                return await self._learning_path_prompt(arguments or {})
+            else:
+                raise ValueError(f"Unknown prompt: {name}")
+        except Exception as e:
+            raise Exception(f"Error getting prompt {name}: {str(e)}")
+    
+    async def _strategy_coach_prompt(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate strategy coaching prompt based on current game state."""
+        board_state = arguments.get("board_state", None)
+        skill_level = arguments.get("skill_level", "intermediate")
+        focus_area = arguments.get("focus_area", "general")
+        
+        # Build context based on board state
+        board_context = ""
+        if board_state:
+            board_context = f"Current board state: {board_state}\n"
+            # Analyze current position
+            empty_positions = [i+1 for i, cell in enumerate(board_state) if cell is None]
+            x_positions = [i+1 for i, cell in enumerate(board_state) if cell == 'X']
+            o_positions = [i+1 for i, cell in enumerate(board_state) if cell == 'O']
+            
+            board_context += f"Empty positions: {empty_positions}\n"
+            board_context += f"X positions: {x_positions}\n"
+            board_context += f"O positions: {o_positions}\n"
+        
+        prompt_text = f"""You are an expert tic-tac-toe coach providing personalized strategy guidance.
+
+Player Information:
+- Skill Level: {skill_level}
+- Focus Area: {focus_area}
+
+{board_context}
+
+Instructions:
+1. Analyze the current position if provided
+2. Provide strategic advice appropriate for the {skill_level} level
+3. Focus on {focus_area} aspects of play
+4. Explain reasoning behind your recommendations
+5. Suggest specific moves or patterns when relevant
+6. Use encouraging and educational tone
+
+Please provide comprehensive strategy coaching that helps the player improve their tic-tac-toe skills."""
+
+        return {
+            "description": f"Strategy coaching for {skill_level} player focusing on {focus_area}",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": {
+                        "type": "text",
+                        "text": prompt_text
+                    }
+                }
+            ]
+        }
+    
+    async def _game_analyzer_prompt(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate game analysis prompt based on move history."""
+        move_history = arguments.get("move_history", [])
+        analysis_depth = arguments.get("analysis_depth", "detailed")
+        
+        if not move_history:
+            raise ValueError("Move history is required for game analysis")
+        
+        # Convert move history to readable format
+        moves_text = ""
+        for i, move in enumerate(move_history):
+            player = "X" if i % 2 == 0 else "O"
+            moves_text += f"Move {i+1}: {player} plays position {move}\n"
+        
+        prompt_text = f"""You are an expert tic-tac-toe analyst providing detailed game review.
+
+Game Information:
+- Analysis Depth: {analysis_depth}
+- Total Moves: {len(move_history)}
+
+Move History:
+{moves_text}
+
+Analysis Instructions:
+1. Review each move and evaluate its quality
+2. Identify key turning points in the game
+3. Highlight missed opportunities or mistakes
+4. Explain strategic concepts demonstrated
+5. Provide overall game assessment
+6. Suggest improvements for future games
+
+Analysis Level: {analysis_depth}
+- Quick: Brief overview with key points
+- Detailed: Move-by-move analysis with explanations
+- Comprehensive: In-depth strategic discussion with variations
+
+Please provide thorough game analysis that helps players learn from this game."""
+
+        return {
+            "description": f"{analysis_depth.title()} analysis of {len(move_history)}-move game",
+            "messages": [
+                {
+                    "role": "user", 
+                    "content": {
+                        "type": "text",
+                        "text": prompt_text
+                    }
+                }
+            ]
+        }
+    
+    async def _learning_path_prompt(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate personalized learning path prompt."""
+        current_level = arguments.get("current_level", "beginner")
+        learning_goals = arguments.get("learning_goals", "improve overall play")
+        
+        prompt_text = f"""You are an expert tic-tac-toe instructor creating a personalized learning curriculum.
+
+Student Information:
+- Current Level: {current_level}
+- Learning Goals: {learning_goals}
+
+Curriculum Requirements:
+1. Assess appropriate starting point for {current_level} player
+2. Create structured learning progression
+3. Include specific skills and concepts to master
+4. Suggest practice exercises and drills
+5. Provide milestones and progress indicators
+6. Adapt to stated learning goals: {learning_goals}
+
+Learning Path Structure:
+- Foundational concepts (if needed)
+- Core strategic principles 
+- Tactical pattern recognition
+- Advanced concepts (if appropriate)
+- Practice recommendations
+- Assessment methods
+
+Please create a comprehensive learning path that efficiently guides the student from their current level toward mastery of tic-tac-toe strategy."""
+
+        return {
+            "description": f"Personalized learning path for {current_level} player",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": {
+                        "type": "text", 
+                        "text": prompt_text
+                    }
+                }
+            ]
+        }
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> CallToolResult:
         """Execute a tool based on its name and arguments."""
