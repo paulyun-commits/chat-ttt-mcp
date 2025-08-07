@@ -236,8 +236,6 @@ async function aiChooseTool(message) {
 You are a smart assistant for a tic-tac-toe game that can select tools.
 Analyze the user's request and pick the an appropriate tool if there is one.
 Be choosy and only select the tool that's right for the job, otherwise return 'none'.
-If the user's request is a single number, you can assume the play_move tool.
-If the user is just asking for a suggestion, then don't pick a tool and just respond.
 
 AVAILABLE TOOLS:
 ${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
@@ -260,17 +258,21 @@ The last one is the current message from the user:
 ${formatChatHistoryForPrompt()}
 
 INSTRUCTIONS:
+If the user's request is a single number, you can assume the play_move tool.
+If the is asking a question or asking for a suggestion, then just reply and avoid selecting a tool.
 Analyze the user's request and respond with exactly one of these formats:
 
 1. If a tool should be used:
 TOOL: tool_name
 ARGS: {"key1": "value1", "key2": "value2"}
 REASON: Brief explanation why this tool is appropriate
+QUESTION: 'yes' if the user is asking a question, 'no' otherwise
 
 2. If no tool is needed (just conversation):
 TOOL: none
 ARGS: {}
 REASON: Brief explanation why no tool is needed
+QUESTION: 'yes' if the user is asking a question, 'no' otherwise
 RESPONSE: Your conversational response to the user
 
 This is the user's request: "${message}"
