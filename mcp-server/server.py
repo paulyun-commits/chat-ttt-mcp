@@ -8,15 +8,15 @@ from typing import Any, Dict, List, Optional
 from mcp.server import Server
 from mcp import stdio_server
 from mcp.types import (
-    CallToolResult, 
-    TextContent, 
+    CallToolResult,
+    TextContent,
     Tool,
     Resource,
     Prompt,
     GetPromptResult,
     PromptMessage,
     ReadResourceResult,
-    TextResourceContents
+    TextResourceContents,
 )
 from mcp_tools import MCPTools
 import config
@@ -46,17 +46,32 @@ async def handle_list_tools() -> List[Tool]:
         return []
 
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResult:
-    """Call a specific tool."""
+async def handle_call_tool(name: str, arguments: Dict[str, Any]):
+    """Call a specific tool.
+    Note: The MCP server expects either a list of Content items or a CallToolResult.
+    Some versions will wrap non-CallToolResult returns as CallToolResult(content=...).
+    To avoid validation issues, we return just the content list here and raise on errors
+    so the transport can surface them properly.
+    """
     try:
         result = await mcp_tools.execute_tool(name, arguments)
-        return result
+
+        # If the tool indicated an error, raise to propagate via JSON-RPC error path
+        if getattr(result, "isError", False):
+            try:
+                msg = "; ".join(
+                    [getattr(c, "text", str(c)) for c in getattr(result, "content", [])]
+                )
+            except Exception:
+                msg = "Tool execution error"
+            raise RuntimeError(msg)
+
+        # Return only the list[Content] to let the MCP server wrap it correctly
+        return result.content
     except Exception as e:
         logger.error(f"Error calling tool {name}: {e}")
-        return CallToolResult(
-            content=[TextContent(type="text", text=f"Error: {str(e)}")],
-            isError=True
-        )
+        # Raising ensures the JSON-RPC error path is used (clients can mark isError)
+        raise
 
 @server.list_resources()
 async def handle_list_resources() -> List[Resource]:
