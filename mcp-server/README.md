@@ -72,6 +72,22 @@ OLLAMA_BASE_URL=http://localhost:11434
 - `GET /mcp/ping`: Connectivity test
 - `GET /mcp/roots/list`: List accessible file system roots
 
+### Streaming Endpoints
+- `POST /mcp/tools/call/stream`: Stream tool execution with progress updates
+- `POST /mcp/tools/call/stream-json`: Stream tool execution (JSON lines format)
+- `GET /mcp/tools/call/stream-sse/{tool_name}`: Server-Sent Events for tool execution
+- `GET /mcp/tools/list/stream`: Stream tools list with detailed metadata
+- `POST /mcp/resources/read/stream`: Stream resource content in chunks
+- `GET /mcp/resources/read/stream/{path:path}`: Stream file resource by path
+- `GET /mcp/resources/list/stream`: Stream resources list with metadata
+- `GET /mcp/prompts/list/stream`: Stream prompts list with detailed information
+
+### WebSocket Endpoints
+- `WS /mcp/ws`: Real-time bidirectional MCP communication
+- `WS /mcp/ws/tools/{tool_name}`: Stream specific tool execution
+- `WS /mcp/ws/resources/list`: Stream resources list via WebSocket
+- `WS /mcp/ws/resources/read`: Stream resource content via WebSocket
+
 ### Notification Endpoints (Stubs)
 - `POST /mcp/notifications/tools/list_changed`: Tools list changed
 - `POST /mcp/notifications/resources/list_changed`: Resources list changed
