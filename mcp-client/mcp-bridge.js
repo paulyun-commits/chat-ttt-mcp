@@ -114,20 +114,6 @@ class MCPStdioBridge {
             }
         });
 
-        // Get all MCP data (tools, resources, prompts)
-        app.get('/mcp/all', async (req, res) => {
-            try {
-                const [tools, resources, prompts] = await Promise.all([
-                    this.listTools(),
-                    this.listResources(),
-                    this.listPrompts()
-                ]);
-                res.json({ tools, resources, prompts });
-            } catch (error) {
-                res.status(500).json({ error: error.message });
-            }
-        });
-
         // Get server capabilities
         app.get('/mcp/capabilities', (req, res) => {
             res.json({
@@ -464,7 +450,6 @@ function setupMCPRoutes(app) {
         for (let i = 0; i < retries; i++) {
             try {
                 await bridge.initialize();
-                console.log('MCP Bridge initialized successfully');
                 return;
             } catch (error) {
                 console.error(`Failed to initialize MCP bridge (attempt ${i + 1}/${retries}):`, error.message);

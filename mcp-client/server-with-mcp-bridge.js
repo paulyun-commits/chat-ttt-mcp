@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { MCPStdioBridge } = require('./mcp-bridge');
 
 class MCPHttpServer {
-    constructor(port = 8000) {
+    constructor(port = 3000) {
         this.port = port;
         this.app = express();
         this.mcpBridge = new MCPStdioBridge();
@@ -23,6 +24,7 @@ class MCPHttpServer {
         // JSON parsing middleware
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
+        this.app.use(express.static(path.join(__dirname, 'public')));
 
         // Request logging middleware
         this.app.use((req, res, next) => {
@@ -290,19 +292,6 @@ class MCPHttpServer {
             }
         });
 
-        this.app.get('/mcp/all', async (req, res) => {
-            try {
-                const [tools, resources, prompts] = await Promise.all([
-                    this.mcpBridge.listTools(),
-                    this.mcpBridge.listResources(),
-                    this.mcpBridge.listPrompts()
-                ]);
-                res.json({ tools, resources, prompts });
-            } catch (error) {
-                res.status(500).json({ error: error.message });
-            }
-        });
-
         this.app.get('/mcp/capabilities', (req, res) => {
             res.json({
                 tools: {
@@ -352,7 +341,6 @@ class MCPHttpServer {
         try {
             // Initialize the MCP bridge
             await this.mcpBridge.initialize();
-            console.log('MCP Bridge initialized successfully');
 
             // Start the HTTP server
             return new Promise((resolve, reject) => {
