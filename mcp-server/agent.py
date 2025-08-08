@@ -1,20 +1,44 @@
 from typing import List, Optional
 import random
+import logging
+from datetime import datetime
 
 class TicTacToeAgent:
     def __init__(self):
-        pass
+        # Set up logging
+        self.logger = logging.getLogger('TicTacToeAgent')
+        self.logger.setLevel(logging.INFO)
+        
+        # Create file handler
+        file_handler = logging.FileHandler('TicTacToeAgent.log')
+        file_handler.setLevel(logging.INFO)
+        
+        # Create formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # Add handler to logger (only if not already added)
+        if not self.logger.handlers:
+            self.logger.addHandler(file_handler)
+        
+        self.logger.info("TicTacToeAgent initialized")
 
     def new_game(self) -> int:
-        print("MCP-TicTacToeAgent: new_game")
-        return 1
+        self.logger.info("new_game method called")
+        result = 1
+        self.logger.info(f"new_game returning: {result}")
+        return result
 
     def best_move(self, board: List[Optional[str]], player: str, game_over: bool = False, winner: Optional[str] = None) -> int:
-        print("MCP-TicTacToeAgent: best_move", player, board)
-        if game_over: return -1
+        self.logger.info(f"best_move method called with player={player}, board={board}, game_over={game_over}, winner={winner}")
+        if game_over: 
+            self.logger.info("Game is over, returning -1")
+            return -1
 
         valid_moves = [i for i, cell in enumerate(board) if cell is None]
-        if not valid_moves: return -1
+        if not valid_moves: 
+            self.logger.info("No valid moves available, returning -1")
+            return -1
 
         best_score = float('-inf')
         best_move_idx = valid_moves[0]
@@ -32,21 +56,34 @@ class TicTacToeAgent:
                 best_score = score
                 best_move_idx = move
         
-        return best_move_idx + 1  # Convert to 1-based indexing
+        result = best_move_idx + 1  # Convert to 1-based indexing
+        self.logger.info(f"best_move returning: {result} (0-based index: {best_move_idx}, score: {best_score})")
+        return result
 
     def random_move(self, board: List[Optional[str]], player: str, game_over: bool = False, winner: Optional[str] = None) -> int:
-        print("MCP-TicTacToeAgent: random_move", player, board)
-        if game_over: return -1
+        self.logger.info(f"random_move method called with player={player}, board={board}, game_over={game_over}, winner={winner}")
+        if game_over: 
+            self.logger.info("Game is over, returning -1")
+            return -1
 
         valid_moves = [i for i, cell in enumerate(board) if cell is None]
-        if not valid_moves: return -1
+        if not valid_moves: 
+            self.logger.info("No valid moves available, returning -1")
+            return -1
 
-        return random.choice(valid_moves) + 1  # Convert to 1-based indexing
+        result = random.choice(valid_moves) + 1  # Convert to 1-based indexing
+        self.logger.info(f"random_move returning: {result} (0-based index: {result-1})")
+        return result
 
     def play_move(self, board: List[Optional[str]], position: int, player: str) -> int:
-        print("MCP-TicTacToeAgent: play_move", player, board)
-        if position < 1 or position > 9: return -1
-        if board[position - 1] is not None: return -1
+        self.logger.info(f"play_move method called with player={player}, position={position}, board={board}")
+        if position < 1 or position > 9: 
+            self.logger.info(f"Invalid position {position}, returning -1")
+            return -1
+        if board[position - 1] is not None: 
+            self.logger.info(f"Position {position} already occupied, returning -1")
+            return -1
+        self.logger.info(f"play_move returning: {position}")
         return position
 
     def _minimax(self, board: List[Optional[str]], is_maximizing: bool, ai_player: str) -> int:
