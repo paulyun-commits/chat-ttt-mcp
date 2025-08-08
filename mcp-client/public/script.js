@@ -255,17 +255,17 @@ async function aiChooseTool(message) {
         };
         
         const prompt = `
-You are a smart assistant for a tic-tac-toe game that can select tools.
-Analyze the user's request and pick the an appropriate tool if there is one.
-Be choosy and only select the tool that's right for the job, otherwise return 'none'.
+- You are a smart assistant for a tic-tac-toe game that can select tools.
+- Analyze the user's request and pick the an appropriate tool if there is one.
+- Be choosy and only select the tool that's right for the job, otherwise return 'none'.
 
 AVAILABLE TOOLS:
 ${mcpTools.tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
-AVAILABLE TOOLS USAGE:
-- best_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- random_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}", "game_over": ${gameState.gameOver}, "winner": ${gameState.winner ? `"${gameState.winner}"` : 'null'}}
-- play_move: {"board": ${JSON.stringify(gameState.board)}, "player": "${gameState.player}, "position": position_number"}
+AVAILABLE TOOLS - EXAMPLE USAGE:
+- best_move: {"board": ["X","O","X","O","O",null,"X","X",null], "player": "O", "game_over": false, "winner": null}
+- random_move: {"board": ["X","O","X","O","O",null,"X","X",null], "player": "O", "game_over": false, "winner": null}
+- play_move: {"board": ["X","O","X","O","O",null,"X","X",null], "player": "O, "position": 1"}
 - new_game: {}
 
 CURRENT BOARD STATE:
@@ -276,13 +276,12 @@ CURRENT BOARD STATE:
 ${visualizeBoard(gameState.board)}
 
 CHAT HISTORY:
-The last one is the current message from the user:
 ${formatChatHistoryForPrompt()}
 
 INSTRUCTIONS:
-If the user's request is a single number, you can assume the play_move tool.
-If the is asking a question or asking for a suggestion, then just reply and avoid selecting a tool.
-Analyze the user's request and respond with exactly one of these formats:
+- If the user's request is a single number, you can assume the play_move tool.
+- If the is asking a question or asking for a suggestion, then just reply and avoid selecting a tool.
+- Analyze the user's request and respond with exactly one of these formats:
 
 1. If a tool should be used:
 TOOL: tool_name
@@ -331,7 +330,7 @@ This is the user's request: "${message}"
 
         const data = await ollamaResponse.json();
         const aiResponse = data.response?.trim() || '';
-        console.log('Ollama response:');
+        console.log('OLLAMA RESPONSE:');
         console.log(aiResponse);
         
         const toolMatch = aiResponse.match(/TOOL:\s*(\w+)/);
@@ -405,8 +404,8 @@ async function aiSendMessage(message, args) {
             };
 
             const prompt = `
-You are a smart assistant for a tic-tac-toe game that can have conversations.
-Provide helpful information about the game state, strategy tips, or general chat.
+- You are a smart assistant for a tic-tac-toe game that can have conversations.
+- Provide helpful information about the game state, strategy tips, or general chat.
 
 AVAILABLE RESOURCES:
 ${mcpResources.resources.map(resource => `- ${resource.name}: ${resource.description} (${resource.mimeType})`).join('\n')}
@@ -419,11 +418,10 @@ CURRENT BOARD STATE:
 ${visualizeBoard(gameState.board)}
 
 CHAT HISTORY:
-The last one is the current message from the user:
 ${formatChatHistoryForPrompt()}
 
 INSTRUCTIONS:
-Analyze the user's request and respond with helpful information.
+- Analyze the user's request and respond with helpful information.
 
 This is the user's request: "${message}"
 `;
@@ -449,11 +447,13 @@ This is the user's request: "${message}"
             }
 
             const data = await ollamaResponse.json();
-            responseText = data.response?.trim();
+            const aiResponse = data.response?.trim() || '';
+            console.log('OLLAMA RESPONSE:');
+            console.log(aiResponse);
         }
         
         removeThinkingMessage();
-        addBotMessage(responseText);
+        addBotMessage(aiResponse);
     }
     catch (error) {
         removeThinkingMessage();
@@ -466,10 +466,10 @@ async function aiGetComment(message, player) {
     
     try {
         const prompt = `
-You are a witty expert in the game of tic-tac-toe.
-Direct your comment to the one who made the last move.
-If it's O, then it's you.  If it's X then it's me.
-The last move was made by: ${player}
+- You are a witty expert in the game of tic-tac-toe.
+- Direct your comment to the one who made the last move.
+- If it's O, then talk about yourself.  If it's X then talk about me.
+- The last move was made by: ${player}
 
 CURRENT BOARD STATE:
 - Is Game Over? ${gameState.gameOver}
@@ -478,12 +478,11 @@ CURRENT BOARD STATE:
 ${visualizeBoard(gameState.board)}
 
 CHAT HISTORY:
-The last one is the current message from the user:
 ${formatChatHistoryForPrompt()}
 
 INSTRUCTIONS:
-Analyze the user's request and respond with a witty, but short remark.
-No more than one sentence.
+- Analyze the user's request and respond with a witty, but short remark.
+- No more than one sentence.
 
 This is the user's request: "${message}"
 `;
@@ -509,10 +508,12 @@ This is the user's request: "${message}"
         }
 
         const data = await ollamaResponse.json();
-        responseText = data.response?.trim();
-        
+        const aiResponse = data.response?.trim() || '';
+        console.log('OLLAMA RESPONSE:');
+        console.log(aiResponse);
+
         removeThinkingMessage();
-        addBotMessage(responseText);
+        addBotMessage(aiResponse);
     }
     catch (error) {
         removeThinkingMessage();
@@ -568,8 +569,12 @@ async function callMCPTool(toolName, args) {
                 arguments: args
             })
         });
-        
-        if (response.ok) return await response.json();
+
+        const toolResult = await response.json();
+        console.log(`MCP TOOL RESPONSE (${toolName}):`);
+        console.log(toolResult);
+
+        if (response.ok) return toolResult;
 
         throw new Error(`MCP API error: ${response.status}`);
     }
@@ -1049,8 +1054,6 @@ async function processChatInput(input) {
     console.log('Processing user prompt:');
     console.log(input);
     const result = await aiChooseTool(input);
-    console.log('Tool selection result:');
-    console.log(result);
     
     if (result) {
         addGameMessage(result.reason + " [" + result.tool + "]");
