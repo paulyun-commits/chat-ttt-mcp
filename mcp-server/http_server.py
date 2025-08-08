@@ -5,10 +5,12 @@ import logging
 from typing import Any, Dict, List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 import uvicorn
+import json
 
 from mcp_tools import MCPTools
 import config
@@ -34,6 +36,32 @@ class LoggingMessageRequest(BaseModel):
     level: str
     data: Any
     logger: Optional[str] = None
+
+class ConnectionManager:
+    """Manages WebSocket connections for streaming."""
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+    
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove dead connections
+                self.active_connections.remove(connection)
+
+manager = ConnectionManager()
 
 class MCPClient:
     """Client to communicate with the MCP server process."""
@@ -110,6 +138,56 @@ class MCPClient:
         """Get the content of a specific prompt."""
         return await self.mcp_tools.get_prompt_content(prompt_name, arguments)
     
+    async def call_mcp_tool_stream(self, tool_name: str, arguments: Dict[str, Any]):
+        """Call an MCP tool with streaming response."""
+        try:
+            # Yield initial status
+            yield {
+                "type": "status",
+                "status": "starting",
+                "tool": tool_name,
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+            # Execute the tool
+            result = await self.mcp_tools.execute_tool(tool_name, arguments)
+            
+            # Yield progress updates (simulate chunked processing)
+            yield {
+                "type": "progress",
+                "status": "processing",
+                "tool": tool_name,
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+            # Convert CallToolResult to the expected format
+            content_list = []
+            for content_item in result.content:
+                if hasattr(content_item, 'text'):
+                    content_list.append({"type": "text", "text": content_item.text})
+                else:
+                    content_list.append({"type": "text", "text": str(content_item)})
+            
+            # Yield the final result
+            yield {
+                "type": "result",
+                "status": "completed",
+                "tool": tool_name,
+                "content": content_list,
+                "isError": getattr(result, 'isError', False),
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calling MCP tool {tool_name}: {e}")
+            yield {
+                "type": "error",
+                "status": "error",
+                "tool": tool_name,
+                "error": str(e),
+                "timestamp": asyncio.get_event_loop().time()
+            }
+
     async def call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call an MCP tool through the MCPTools interface."""
         try:
@@ -193,7 +271,9 @@ async def get_server_info():
             "tools": True,
             "resources": True,
             "prompts": True,
-            "logging": True
+            "logging": True,
+            "streaming": True,
+            "websockets": True
         },
         "protocolVersion": "2024-11-05",
         "serverInfo": {
@@ -212,7 +292,9 @@ async def mcp_initialize():
             "tools": True,
             "resources": True,
             "prompts": True,
-            "logging": True
+            "logging": True,
+            "streaming": True,
+            "websockets": True
         },
         "serverInfo": {
             "name": "chattt-mcp-server",
@@ -324,6 +406,206 @@ async def mcp_set_logging_level(request: SetLevelRequest):
     except Exception as e:
         logger.error(f"Error setting logging level: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
+
+# Streaming HTTP Endpoints
+
+@app.post("/mcp/tools/call/stream")
+async def mcp_call_tool_stream(request: CallToolRequest):
+    """Streaming version of MCP tool call endpoint."""
+    async def generate():
+        async for chunk in mcp_client.call_mcp_tool_stream(request.name, request.arguments):
+            yield f"data: {json.dumps(chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+    )
+
+@app.post("/mcp/tools/call/stream-json")
+async def mcp_call_tool_stream_json(request: CallToolRequest):
+    """Streaming version of MCP tool call endpoint with JSON lines format."""
+    async def generate():
+        async for chunk in mcp_client.call_mcp_tool_stream(request.name, request.arguments):
+            yield f"{json.dumps(chunk)}\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )
+
+@app.get("/mcp/tools/call/stream-sse/{tool_name}")
+async def mcp_call_tool_stream_sse(tool_name: str, arguments: str = "{}"):
+    """Server-Sent Events streaming endpoint for tool calls."""
+    try:
+        parsed_arguments = json.loads(arguments)
+    except json.JSONDecodeError:
+        parsed_arguments = {}
+    
+    async def generate():
+        yield "event: connected\n"
+        yield f"data: {json.dumps({'message': 'Connected to stream'})}\n\n"
+        
+        async for chunk in mcp_client.call_mcp_tool_stream(tool_name, parsed_arguments):
+            event_type = chunk.get('type', 'data')
+            yield f"event: {event_type}\n"
+            yield f"data: {json.dumps(chunk)}\n\n"
+        
+        yield "event: completed\n"
+        yield "data: {\"message\": \"Stream completed\"}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream"
+        }
+    )
+
+@app.get("/mcp/resources/read/stream/{path:path}")
+async def mcp_read_resource_stream(path: str):
+    """Streaming endpoint for reading large resources."""
+    resource_uri = f"file://{path}"
+    
+    async def generate():
+        try:
+            yield f"data: {json.dumps({'type': 'start', 'uri': resource_uri})}\n\n"
+            
+            # Read the resource content
+            content = await mcp_client.read_resource_content(resource_uri)
+            
+            # Stream content in chunks
+            chunk_size = 1024  # 1KB chunks
+            for i in range(0, len(content), chunk_size):
+                chunk = content[i:i + chunk_size]
+                chunk_data = {
+                    'type': 'chunk',
+                    'data': chunk,
+                    'offset': i,
+                    'total_size': len(content)
+                }
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'end', 'total_size': len(content)})}\n\n"
+            
+        except Exception as e:
+            error_data = {'type': 'error', 'error': str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )
+
+# WebSocket Endpoints
+
+@app.websocket("/mcp/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time MCP communication."""
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Receive message from client
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            # Handle different message types
+            if message.get("type") == "call_tool":
+                tool_name = message.get("name")
+                arguments = message.get("arguments", {})
+                
+                # Stream tool execution results
+                async for chunk in mcp_client.call_mcp_tool_stream(tool_name, arguments):
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "id": message.get("id"),
+                            "type": "tool_result",
+                            "data": chunk
+                        }),
+                        websocket
+                    )
+            
+            elif message.get("type") == "ping":
+                await manager.send_personal_message(
+                    json.dumps({
+                        "id": message.get("id"),
+                        "type": "pong",
+                        "timestamp": asyncio.get_event_loop().time()
+                    }),
+                    websocket
+                )
+            
+            elif message.get("type") == "list_tools":
+                tools = mcp_client.get_available_tools()
+                await manager.send_personal_message(
+                    json.dumps({
+                        "id": message.get("id"),
+                        "type": "tools_list",
+                        "data": tools
+                    }),
+                    websocket
+                )
+            
+            else:
+                await manager.send_personal_message(
+                    json.dumps({
+                        "id": message.get("id"),
+                        "type": "error",
+                        "error": f"Unknown message type: {message.get('type')}"
+                    }),
+                    websocket
+                )
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await manager.send_personal_message(
+            json.dumps({
+                "type": "error",
+                "error": str(e)
+            }),
+            websocket
+        )
+        manager.disconnect(websocket)
+
+@app.websocket("/mcp/ws/tools/{tool_name}")
+async def websocket_tool_endpoint(websocket: WebSocket, tool_name: str):
+    """WebSocket endpoint for streaming a specific tool."""
+    await websocket.accept()
+    try:
+        while True:
+            # Receive arguments from client
+            data = await websocket.receive_text()
+            arguments = json.loads(data)
+            
+            # Stream tool execution
+            async for chunk in mcp_client.call_mcp_tool_stream(tool_name, arguments):
+                await websocket.send_text(json.dumps(chunk))
+                
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"WebSocket tool error: {e}")
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "error": str(e)
+        }))
 
 # Notification endpoints (typically used by server to send to client, but included for completeness)
 
