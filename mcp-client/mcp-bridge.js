@@ -13,15 +13,24 @@ class MCPStdioBridge {
     }
 
     setupRoutes(app) {
-        // MCP Status
-        app.get('/mcp/status', (req, res) => {
+        // Server info endpoint - for backward compatibility and health checks
+        app.get('/info', (req, res) => {
             res.json({
-                status: this.mcpProcess ? 'connected' : 'disconnected',
-                serverInfo: this.serverInfo,
+                name: 'chattt-mcp-client',
+                version: '1.0.0',
+                description: 'MCP HTTP client bridge for ChatTTT game',
+                status: 'healthy',
+                mcp_server_available: this.mcpProcess !== null,
                 capabilities: {
-                    tools: this.tools.length,
-                    resources: this.resources.length,
-                    prompts: this.prompts.length
+                    tools: true,
+                    resources: true,
+                    prompts: true,
+                    logging: true
+                },
+                protocolVersion: '2024-11-05',
+                serverInfo: {
+                    name: 'chattt-mcp-client',
+                    version: '1.0.0'
                 }
             });
         });
@@ -37,7 +46,7 @@ class MCPStdioBridge {
         });
 
         // List tools
-        app.get('/mcp/tools', async (req, res) => {
+        app.get('/mcp/tools/list', async (req, res) => {
             try {
                 const tools = await this.listTools();
                 res.json({ tools });
@@ -63,7 +72,7 @@ class MCPStdioBridge {
         });
 
         // List resources
-        app.get('/mcp/resources', async (req, res) => {
+        app.get('/mcp/resources/list', async (req, res) => {
             try {
                 const resources = await this.listResources();
                 res.json({ resources });
@@ -89,7 +98,7 @@ class MCPStdioBridge {
         });
 
         // List prompts
-        app.get('/mcp/prompts', async (req, res) => {
+        app.get('/mcp/prompts/list', async (req, res) => {
             try {
                 const prompts = await this.listPrompts();
                 res.json({ prompts });
