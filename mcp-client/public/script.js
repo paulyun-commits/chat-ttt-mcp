@@ -162,9 +162,7 @@ function setupEventListeners() {
         
         // If we just enabled auto-play and it's AI's turn, make a move
         if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
-            setTimeout(() => {
-                requestAIMove();
-            }, 1000); // Small delay to make it feel more natural
+            requestAIMove();
         }
     });
 
@@ -575,8 +573,8 @@ function removeThinkingMessage() {
 // MCP
 
 async function callMCPTool(toolName, args) {
-    addGameMessage(`MCP: Calling ${toolName} with arguments: ${JSON.stringify(args)}`);
-    
+    addGameMessage(`MCP call: ${toolName} with arguments: ${JSON.stringify(args)}`);
+
     try {
         const response = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/call`, {
             method: 'POST',
@@ -592,7 +590,7 @@ async function callMCPTool(toolName, args) {
         const toolResult = await response.json();
         console.log(`MCP TOOL RESPONSE (${toolName}):`);
         console.log(toolResult);
-        addGameMessage(`MCP: returned ${JSON.stringify(toolResult)}`);
+        addGameMessage(`MCP returned: ${JSON.stringify(toolResult)}`);
 
         if (response.ok) return toolResult;
 
@@ -829,8 +827,8 @@ async function handlePlayMoveRequest(args) {
         const toolResult = await callMCPTool('play_move', mpc_args);
 
         if (toolResult && !toolResult.isError) {
-            const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
             addGameMessage(`${mpc_args.player} played a move in position ${args.position}!`);
+            const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
             if (success) return;
         }
 
@@ -888,8 +886,11 @@ function handleModelChange() {
 // Game
 
 async function requestAIMove() {
-    if (gameState.gameOver) return;
-    
+    if (gameState.gameOver) {
+        addBotMessage(GAME_MESSAGES.GAME_OVER_NEW);
+        return;
+    }
+
     try {
         await handleBestMoveRequest({ player: PLAYERS.AI });
         await aiGetComment("Comment on how good your last move was", PLAYERS.AI);
@@ -926,27 +927,32 @@ function makeMove(position, player) {
     
     // Make the move
     gameState.board[index] = player;
+    let game_status, game_message;
     
     // Check for game end
     const winner = checkWinner(gameState.board);
     if (winner) {
         gameState.winner = winner;
         gameState.gameOver = true;
+        game_status = `🎉 ${winner} wins!`;
+        game_message = `🎉 Game Over! ${winner} wins!`;
         updateGameBoard();
-        updateGameStatus(`🎉 ${winner} wins!`);
-        addGameMessage(`🎉 Game Over! ${winner} wins!`);
-        return true;
     } 
     
     if (gameState.board.every(cell => cell !== null)) {
         gameState.winner = null; // Tie
         gameState.gameOver = true;
+        game_status = `🤝 It's a tie!`;
+        game_message = `🤝 Game Over! It's a tie!`;
         updateGameBoard();
-        updateGameStatus(`🤝 It's a tie!`);
-        addGameMessage(`🤝 Game Over! It's a tie!`);
-        return true;
     } 
-    
+
+    if (game_status && game_message) {
+        updateGameStatus(game_status);
+        addGameMessage(game_message);
+        return true;
+    }
+
     // Switch player and continue game
     gameState.player = gameState.player === PLAYERS.HUMAN ? PLAYERS.AI : PLAYERS.HUMAN;
     updateGameBoard();
@@ -954,9 +960,7 @@ function makeMove(position, player) {
     
     // If auto-play is enabled and it's now AI's turn, make an automatic move
     if (CONFIG.game.aiAutoPlay && gameState.player === PLAYERS.AI && !gameState.gameOver) {
-        setTimeout(() => {
-            requestAIMove();
-        }, 1000); // Small delay to make it feel more natural
+        requestAIMove();
     }
     
     return true;
