@@ -575,6 +575,8 @@ function removeThinkingMessage() {
 // MCP
 
 async function callMCPTool(toolName, args) {
+    addGameMessage(`MCP: Calling ${toolName} with arguments: ${JSON.stringify(args)}`);
+    
     try {
         const response = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/call`, {
             method: 'POST',
@@ -590,6 +592,7 @@ async function callMCPTool(toolName, args) {
         const toolResult = await response.json();
         console.log(`MCP TOOL RESPONSE (${toolName}):`);
         console.log(toolResult);
+        addGameMessage(`MCP: returned ${JSON.stringify(toolResult)}`);
 
         if (response.ok) return toolResult;
 
@@ -723,9 +726,8 @@ async function handleNewGameRequest() {
     const mcp_args = {};
 
     try {
-        addGameMessage(`MCP: Calling new_game with arguments: ${JSON.stringify(mcp_args)}`);
         const toolResult = await callMCPTool('new_game', mcp_args);
-        
+
         if (toolResult && !toolResult.isError) {
             resetGame();
             addGameMessage(`A new game was started!`);
@@ -755,18 +757,15 @@ async function handleBestMoveRequest(args) {
     };
 
     try {
-        addGameMessage(`MCP: Calling best_move with arguments: ${JSON.stringify(mpc_args)}`);
         const toolResult = await callMCPTool('best_move', mpc_args);
-        
+   
         if (toolResult && !toolResult.isError) {
             const toolResponse = toolResult.content[0]?.text || '';
             const positionMatch = toolResponse.match(/position (\d+)/);
             
             if (positionMatch) {
                 const bestMove = parseInt(positionMatch[1]);
-                const success = makeMove(bestMove, mpc_args.player); // gameState changes after makeMove()
-                addGameMessage(`${mpc_args.player} played the best move in position ${bestMove}!`);
-                if (success) return;
+                return handlePlayMoveRequest({ position: bestMove });
             }
         }
 
@@ -793,18 +792,15 @@ async function handleRandomMoveRequest(args) {
     };
 
     try {
-        addGameMessage(`MCP: Calling random_move with arguments: ${JSON.stringify(mpc_args)}`);
         const toolResult = await callMCPTool('random_move', mpc_args);
-        
+
         if (toolResult && !toolResult.isError) {
             const toolResponse = toolResult.content[0]?.text || '';
             const positionMatch = toolResponse.match(/position (\d+)/);
             
             if (positionMatch) {
                 const randomMove = parseInt(positionMatch[1]);
-                const success = makeMove(randomMove, mpc_args.player); // gameState changes after makeMove()
-                addGameMessage(`${mpc_args.player} played a random move in position ${randomMove}!`);
-                if (success) return;
+                return handlePlayMoveRequest({ position: randomMove });
             }
         }
 
@@ -830,9 +826,8 @@ async function handlePlayMoveRequest(args) {
     };
 
     try {
-        addGameMessage(`MCP: Calling play_move with arguments: ${JSON.stringify(mpc_args)}`);
         const toolResult = await callMCPTool('play_move', mpc_args);
-        
+
         if (toolResult && !toolResult.isError) {
             const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
             addGameMessage(`${mpc_args.player} played a move in position ${args.position}!`);
