@@ -79,9 +79,10 @@ let gameState = {
 
 let chatHistory = [];
 let gameBoard, gameStatus, mcpStatus, mcpStatusText, ollamaStatus, ollamaStatusText;
-let chatMessages, chatInput, sendBtn, resourcesList, modelSelect, refreshModelsBtn;
+let chatMessages, chatInput, sendBtn, toolsList, resourcesList, modelSelect, refreshModelsBtn;
 let mcpServerInput, updateMcpBtn, ollamaServerInput, updateOllamaBtn, aiAutoplayToggle;
 let servicesHeader, servicesToggle, servicesContent;
+let toolsHeader, resourcesHeader;
 let availableModels = [];
 let isLoadingModels = false;
 
@@ -106,6 +107,7 @@ function initializeElements() {
     chatMessages = document.getElementById('chatMessages');
     chatInput = document.getElementById('chatInput');
     sendBtn = document.getElementById('sendBtn');
+    toolsList = document.getElementById('toolsList');
     resourcesList = document.getElementById('resourcesList');
     modelSelect = document.getElementById('modelSelect');
     refreshModelsBtn = document.getElementById('refreshModelsBtn');
@@ -117,6 +119,8 @@ function initializeElements() {
     servicesHeader = document.getElementById('servicesHeader');
     servicesToggle = document.getElementById('servicesToggle');
     servicesContent = document.getElementById('servicesContent');
+    toolsHeader = document.getElementById('toolsHeader');
+    resourcesHeader = document.getElementById('resourcesHeader');
 }
 
 async function loadConfiguration() {
@@ -211,6 +215,20 @@ function setupEventListeners() {
     servicesToggle.addEventListener('click', (e) => {
         e.stopPropagation(); // Prevent servicesHeader click
         toggleServicesPanel();
+    });
+    
+    // Add escape key listener for fullscreen mode
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const servicesPanel = servicesContent.closest('.services-panel');
+            if (servicesPanel.classList.contains('fullscreen')) {
+                // Exit fullscreen by going to collapsed state
+                servicesPanel.classList.remove('fullscreen');
+                servicesPanel.classList.add('collapsed');
+                servicesToggle.querySelector('.toggle-icon').textContent = '▼';
+                servicesToggle.setAttribute('title', 'Show Services Settings');
+            }
+        }
     });
     
     window.setInterval(async () => {
@@ -450,10 +468,9 @@ This is the user's request: "${message}"
             const aiResponse = data.response?.trim() || '';
             console.log('OLLAMA RESPONSE:');
             console.log(aiResponse);
+            removeThinkingMessage();
+            addBotMessage(aiResponse);
         }
-        
-        removeThinkingMessage();
-        addBotMessage(aiResponse);
     }
     catch (error) {
         removeThinkingMessage();
@@ -672,12 +689,14 @@ async function checkMCPStatus() {
         };
 
         updateMCPStatus(capabilities.status, { ...capabilities, resources: resources.resources });
+        updateToolsPanel(capabilities.tools);
         updateResourcesPanel(resources.resources);
         restoreServicesPanelState();
     }
     catch (error) {
         console.error('Error checking MCP status:', error);
         updateMCPStatus('error', { error: error.message });
+        updateToolsPanel([]);
         updateResourcesPanel([]);
         restoreServicesPanelState();
     }
@@ -1174,41 +1193,65 @@ function clearChat() {
 function toggleServicesPanel() {
     const servicesPanel = servicesContent.closest('.services-panel');
     
+    // Define the two states: collapsed ↔ fullscreen
     const isCollapsed = servicesPanel.classList.contains('collapsed');
+    const isFullscreen = servicesPanel.classList.contains('fullscreen');
     
-    if (isCollapsed) {
-        // Expand the panel
+    if (isCollapsed || (!isFullscreen)) {
+        // State 1: Collapsed → Fullscreen
+        servicesPanel.classList.remove('collapsed', 'expanded');
+        servicesPanel.classList.add('fullscreen');
+        servicesToggle.querySelector('.toggle-icon').textContent = '⛷';
+        servicesToggle.setAttribute('title', 'Minimize Panel');
+        
+    } else if (isFullscreen) {
+        // State 2: Fullscreen → Collapsed
+        servicesPanel.classList.remove('expanded', 'fullscreen');
+        servicesPanel.classList.add('collapsed');
+        servicesToggle.querySelector('.toggle-icon').textContent = '▼';
+        servicesToggle.setAttribute('title', 'Show Services Settings');
+    }
+}
+
+function toggleFullscreenPanel() {
+    const servicesPanel = servicesContent.closest('.services-panel');
+    
+    const isFullscreen = servicesPanel.classList.contains('fullscreen');
+    
+    if (isFullscreen) {
+        // Exit fullscreen
+        servicesPanel.classList.remove('fullscreen');
+        fullscreenToggle.textContent = '⛶';
+        fullscreenToggle.setAttribute('title', 'Enter Fullscreen');
+        
+        // Restore the expanded state if it was expanded before
+        if (!servicesPanel.classList.contains('collapsed')) {
+            servicesPanel.classList.add('expanded');
+        }
+    } else {
+        // Enter fullscreen
+        servicesPanel.classList.add('fullscreen');
         servicesPanel.classList.remove('collapsed');
         servicesPanel.classList.add('expanded');
-        
-        // Update accessibility
-        servicesToggle.setAttribute('title', 'Hide Services Settings');
-    } else {
-        // Collapse the panel
-        servicesPanel.classList.remove('expanded');
-        servicesPanel.classList.add('collapsed');
-        
-        // Update accessibility
-        servicesToggle.setAttribute('title', 'Show Services Settings');
+        fullscreenToggle.textContent = '⛷';
+        fullscreenToggle.setAttribute('title', 'Exit Fullscreen');
     }
 }
 
 function restoreServicesPanelState() {
     const servicesPanel = servicesContent.closest('.services-panel');
-    const wasExpanded = false;
     
-    if (wasExpanded) {
-        servicesPanel.classList.remove('collapsed');
-        servicesPanel.classList.add('expanded');
-        servicesToggle.setAttribute('title', 'Hide Services Settings');
-    } else {
-        servicesPanel.classList.remove('expanded');
-        servicesPanel.classList.add('collapsed');
-        servicesToggle.setAttribute('title', 'Show Services Settings');
-    }
+    // Start in collapsed state by default
+    servicesPanel.classList.remove('expanded', 'fullscreen');
+    servicesPanel.classList.add('collapsed');
+    servicesToggle.querySelector('.toggle-icon').textContent = '▼';
+    servicesToggle.setAttribute('title', 'Show Services Settings');
 }
 
 function updateResourcesPanel(resources) {
+    // Update the resources header with count
+    resourcesHeader.textContent = `📚 Available Resources (${resources.length})`;
+    
     resourcesList.innerHTML = '';
     
     if (resources.length === 0) {
@@ -1256,6 +1299,65 @@ function updateResourcesPanel(resources) {
         resourceItem.appendChild(resourceUri);
         
         resourcesList.appendChild(resourceItem);
+    });
+}
+
+function updateToolsPanel(tools) {
+    // Update the tools header with count
+    toolsHeader.textContent = `🔧 Available Tools (${tools.length})`;
+    
+    toolsList.innerHTML = '';
+    
+    if (tools.length === 0) {
+        const noToolsMsg = document.createElement('div');
+        noToolsMsg.className = 'no-tools-message';
+        noToolsMsg.textContent = 'No tools available';
+        toolsList.appendChild(noToolsMsg);
+        return;
+    }
+    
+    tools.forEach(tool => {
+        const toolItem = document.createElement('div');
+        toolItem.className = 'tool-item';
+        
+        const toolHeader = document.createElement('div');
+        toolHeader.className = 'tool-header';
+        
+        const toolName = document.createElement('h4');
+        toolName.textContent = tool.name;
+        toolName.className = 'tool-name';
+        
+        const toolDescription = document.createElement('p');
+        toolDescription.textContent = tool.description;
+        toolDescription.className = 'tool-description';
+        
+        // Show input schema if available
+        if (tool.inputSchema && tool.inputSchema.properties) {
+            const toolParams = document.createElement('div');
+            toolParams.className = 'tool-params';
+            
+            const paramsTitle = document.createElement('strong');
+            paramsTitle.textContent = 'Parameters: ';
+            toolParams.appendChild(paramsTitle);
+            
+            const paramsList = Object.keys(tool.inputSchema.properties).join(', ');
+            const paramsText = document.createElement('span');
+            paramsText.textContent = paramsList;
+            paramsText.className = 'params-list';
+            toolParams.appendChild(paramsText);
+            
+            toolItem.appendChild(toolHeader);
+            toolItem.appendChild(toolDescription);
+            toolItem.appendChild(toolParams);
+        } else {
+            toolHeader.appendChild(toolName);
+            toolItem.appendChild(toolHeader);
+            toolItem.appendChild(toolDescription);
+        }
+        
+        toolHeader.appendChild(toolName);
+        
+        toolsList.appendChild(toolItem);
     });
 }
 
