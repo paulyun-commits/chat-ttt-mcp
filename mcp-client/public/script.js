@@ -1,7 +1,7 @@
 const CONFIG = {
     server: {
         mcpServerUrl: 'http://localhost:8000',
-        ollamaHost: 'http://omega:11434',
+        ollamaHost: 'http://localhost:11434',
         ollamaModel: 'llama3.2:latest'
     },
     

@@ -3,7 +3,7 @@ const path = require('path');
 
 // Configuration
 const config = {
-    port: process.env.PORT || 3000
+    port: process.env.PORT || 5000
 };
 
 const app = express();

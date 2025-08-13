@@ -4,7 +4,7 @@ const path = require('path');
 const { MCPStdioBridge } = require('./mcp-bridge');
 
 class MCPHttpServer {
-    constructor(port = 3000) {
+    constructor(port = 5000) {
         this.port = port;
         this.app = express();
         this.mcpBridge = new MCPStdioBridge();

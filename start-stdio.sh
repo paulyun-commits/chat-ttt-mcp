@@ -22,7 +22,7 @@ if [ ! -d "mcp-server/venv" ]; then
 fi
 
 # Start the MCP bridge server
-echo "🌉 Starting MCP Bridge Server on port 3000..."
+echo "🌉 Starting MCP Bridge Server on port 5000..."
 cd mcp-client
 node mcp-bridge.js &
 BRIDGE_PID=$!
@@ -32,7 +32,7 @@ cd ..
 sleep 3
 
 # Start the game server
-echo "🚀 Starting Game Server on port 3000..."
+echo "🚀 Starting Game Server on port 5000..."
 cd mcp-client
 npm start &
 GAME_PID=$!
@@ -40,9 +40,9 @@ cd ..
 
 echo ""
 echo "🎉 ChatTTT is ready!"
-echo "📄 HTTP MCP version: http://localhost:3000"
-echo "🔌 Stdio MCP version: http://localhost:3000/stdio"
-echo "🌉 MCP Bridge: http://localhost:3000"
+echo "📄 HTTP MCP version: http://localhost:5000"
+echo "🔌 Stdio MCP version: http://localhost:5000/stdio"
+echo "🌉 MCP Bridge: http://localhost:5000"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 
