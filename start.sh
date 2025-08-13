@@ -16,7 +16,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start the game server
-echo "🚀 Starting Game Server on port 5000..."
+echo "🚀 Starting Game Server on port 8888..."
 cd mcp-client
 npm start &
 GAME_PID=$!
@@ -49,7 +49,7 @@ sleep 3
 echo ""
 echo "🎉 All servers are running!"
 echo ""
-echo "🌐 Game Interface: http://localhost:5000"
+echo "🌐 Game Interface: http://localhost:8888"
 echo "🤖 MCP Server API: http://localhost:8000"
 echo "📊 Server Info: http://localhost:8000/info"
 echo ""

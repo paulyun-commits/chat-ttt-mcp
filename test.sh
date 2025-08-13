@@ -6,10 +6,10 @@ echo "🧪 Testing ChatTTT AI Application..."
 
 # Test if game server is running
 echo "🎮 Testing Game Server..."
-if curl -s http://localhost:5000/api/game-state > /dev/null; then
+if curl -s http://localhost:8888/api/game-state > /dev/null; then
     echo "✅ Game Server is responding"
 else
-    echo "❌ Game Server is not responding on port 5000"
+    echo "❌ Game Server is not responding on port 8888"
 fi
 
 # Test if MCP server is running

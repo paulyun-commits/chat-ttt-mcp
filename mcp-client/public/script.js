@@ -757,14 +757,20 @@ async function handleBestMoveRequest(args) {
     try {
         const toolResult = await callMCPTool('best_move', mpc_args);
    
-        if (toolResult && !toolResult.isError) {
-            const toolResponse = toolResult.content[0]?.text || '';
-            const positionMatch = toolResponse.match(/position (\d+)/);
-            
-            if (positionMatch) {
-                const bestMove = parseInt(positionMatch[1]);
-                return handlePlayMoveRequest({ position: bestMove });
-            }
+        if (!toolResult) {
+            return addBotMessage(`Error calling MCP random_move for ${mpc_args.player}.`);
+        }
+
+        if (toolResult.isError) {
+            return addBotMessage(toolResult.content[0]);
+        }
+
+        const toolResponse = toolResult.content[0]?.text || '';
+        const positionMatch = toolResponse.match(/position (\d+)/);
+        
+        if (positionMatch) {
+            const bestMove = parseInt(positionMatch[1]);
+            return handlePlayMoveRequest({ position: bestMove });
         }
 
         addBotMessage(`A problem occured while making the best move for ${mpc_args.player}.`);
@@ -792,14 +798,20 @@ async function handleRandomMoveRequest(args) {
     try {
         const toolResult = await callMCPTool('random_move', mpc_args);
 
-        if (toolResult && !toolResult.isError) {
-            const toolResponse = toolResult.content[0]?.text || '';
-            const positionMatch = toolResponse.match(/position (\d+)/);
-            
-            if (positionMatch) {
-                const randomMove = parseInt(positionMatch[1]);
-                return handlePlayMoveRequest({ position: randomMove });
-            }
+        if (!toolResult) {
+            return addBotMessage(`Error calling MCP random_move for ${mpc_args.player}.`);
+        }
+
+        if (toolResult.isError) {
+            return addBotMessage(toolResult.content[0]);
+        }
+
+        const toolResponse = toolResult.content[0]?.text || '';
+        const positionMatch = toolResponse.match(/position (\d+)/);
+        
+        if (positionMatch) {
+            const randomMove = parseInt(positionMatch[1]);
+            return handlePlayMoveRequest({ position: randomMove });
         }
 
         addBotMessage(`A problem occured while making a random move for ${mpc_args.player}.`);
@@ -826,12 +838,17 @@ async function handlePlayMoveRequest(args) {
     try {
         const toolResult = await callMCPTool('play_move', mpc_args);
 
-        if (toolResult && !toolResult.isError) {
-            addGameMessage(`${mpc_args.player} played a move in position ${args.position}!`);
-            const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
-            if (success) return;
+        if (!toolResult) {
+            return addBotMessage(`Error calling MCP play_move ${args.position} for ${mpc_args.player}.`);
         }
 
+        if (toolResult.isError) {
+            return addBotMessage(toolResult.content[0]?.text);
+        }
+        
+        addGameMessage(`${mpc_args.player} played a move in position ${args.position}!`);
+        const success = makeMove(args.position, mpc_args.player); // gameState changes after makeMove()
+        if (success) return;
         addBotMessage(`A problem occured while making move ${args.position} for ${mpc_args.player}.`);
     }
     catch (error) {
