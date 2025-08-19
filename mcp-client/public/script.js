@@ -270,19 +270,19 @@ async function aiChooseTool(message) {
             resources: resourcesData.resources || []
         };
         
-        // Get relevant resource content for tool selection context
-        const relevantResources = await getRelevantResourceContent(message, mcpResources.resources);
-        
+        // Get resource content for tool selection context
+        const resources = await getResourceContent(mcpResources.resources);
+
         const prompt = `
 - You are a smart assistant for a tic-tac-toe game that can select tools.
 - Analyze the user's request and pick the an appropriate tool if there is one.
 - Be choosy and only select the tool that's right for the job, otherwise return 'none'.
 
-${relevantResources.length > 0 ? `
+${resources.length > 0 ? `
 RELEVANT CONTEXT FROM RESOURCES:
-${relevantResources.map(resource => `
+${resources.map(resource => `
 === ${resource.name} ===
-${resource.content.substring(0, 800)} // Shorter for tool selection
+${resource.content.substring(0, 500)} // Shorter for tool selection
 === End of ${resource.name} ===
 `).join('\n')}
 ` : ''}
@@ -396,58 +396,35 @@ This is the user's request: "${message}"
 }
 
 // Helper function to determine relevant resources based on user message
-async function getRelevantResourceContent(userMessage, availableResources) {
-    const relevantResources = [];
-    const message = userMessage.toLowerCase();
+async function getResourceContent(availableResources) {
+    const retrievedResources = [];
     
-    // Keywords to resource mapping
-    const resourceKeywords = {
-        'chatttp://game-rules': ['rules', 'how to play', 'how do i', 'play', 'move', 'win', 'board', 'grid', 'position', 'cell', 'click'],
-        'chatttp://strategy-guide': ['strategy', 'tactics', 'best move', 'winning', 'block', 'optimal', 'minimax', 'algorithm', 'think', 'plan'],
-        'chatttp://ai-algorithms': ['technical', 'implementation', 'ai', 'algorithm', 'minimax', 'mcp', 'server', 'how it works', 'architecture'],
-        'chatttp://commands-reference': ['command', 'interface', 'natural language', 'examples', 'phrases', 'interaction', 'chat', 'say']
-    };
-    
-    // Check each resource for relevance
     for (const resource of availableResources) {
-        const keywords = resourceKeywords[resource.uri] || [];
-        const isRelevant = keywords.some(keyword => message.includes(keyword));
+        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/read`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                uri: resource.uri
+            })
+        });
         
-        // Also include resources if user asks general questions about the game
-        const isGeneralGameQuestion = message.includes('how') || message.includes('what') || message.includes('explain');
-        
-        if (isRelevant || (isGeneralGameQuestion && resource.uri === 'chatttp://game-rules')) {
-            try {
-                // Fetch the resource content
-                const response = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/read`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        uri: resource.uri
-                    })
+        if (response.ok) {
+            const data = await response.json();
+            const content = data.contents?.[0]?.text || '';
+            
+            if (content) {
+                retrievedResources.push({
+                    uri: resource.uri,
+                    name: resource.name,
+                    content: content.substring(0, 2000) // Limit content length to avoid huge prompts
                 });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const content = data.contents?.[0]?.text || '';
-                    
-                    if (content) {
-                        relevantResources.push({
-                            uri: resource.uri,
-                            name: resource.name,
-                            content: content.substring(0, 2000) // Limit content length to avoid huge prompts
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error(`Error fetching resource ${resource.uri}:`, error);
             }
         }
     }
     
-    return relevantResources;
+    return retrievedResources;
 }
 
 async function aiSendMessage(message, args) {
@@ -487,8 +464,8 @@ async function aiSendMessage(message, args) {
             };
 
             // Determine which resources are relevant to include full content
-            const relevantResources = await getRelevantResourceContent(message, mcpResources.resources);
-            
+            const resources = await getResourceContent(mcpResources.resources);
+
             const prompt = `
 - You are a smart assistant for a tic-tac-toe game that can have conversations.
 - Provide helpful information about the game state, strategy tips, or general chat.
@@ -496,11 +473,11 @@ async function aiSendMessage(message, args) {
 AVAILABLE RESOURCES:
 ${mcpResources.resources.map(resource => `- ${resource.name}: ${resource.description} (${resource.mimeType})`).join('\n')}
 
-${relevantResources.length > 0 ? `
+${resources.length > 0 ? `
 RELEVANT RESOURCE CONTENT:
-${relevantResources.map(resource => `
+${resources.map(resource => `
 === ${resource.name} ===
-${resource.content}
+${resource.content.substring(0, 500)} // Shorter for tool selection
 === End of ${resource.name} ===
 `).join('\n')}
 ` : ''}
