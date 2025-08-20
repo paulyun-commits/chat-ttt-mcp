@@ -85,6 +85,8 @@ let servicesHeader, servicesToggle, servicesContent;
 let toolsHeader, resourcesHeader;
 let availableModels = [];
 let isLoadingModels = false;
+let mcpRequestId = 1;
+let mcpSessionId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeElements();
@@ -237,36 +239,171 @@ function setupEventListeners() {
     restoreServicesPanelState();
 }
 
+async function makeMCPRequest(method, params = {}) {
+    const requestId = mcpRequestId++;
+    const request = {
+        jsonrpc: "2.0",
+        id: requestId,
+        method: method,
+        params: params
+    };
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        'mcp-protocol-version': '2025-06-30'
+    };
+
+    if (mcpSessionId) {
+        headers['mcp-session-id'] = mcpSessionId;
+    }
+
+    console.log(`MCP Request: ${method}`, { id: requestId, params, headers });
+
+    try {
+        const response = await fetch(`${appConfig.mcpServerUrl}/mcp`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(request)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+        }
+
+        // Check for session ID in response headers
+        const sessionId = response.headers.get('mcp-session-id');
+        if (sessionId && !mcpSessionId) {
+            mcpSessionId = sessionId;
+            console.log('MCP Session ID established:', mcpSessionId);
+        }
+
+        const result = await response.json();
+        console.log(`MCP Response: ${method}`, result);
+        
+        if (result.error) {
+            throw new Error(`MCP Error: ${result.error.message} (Code: ${result.error.code})`);
+        }
+
+        return result.result;
+    } catch (error) {
+        console.error(`MCP Request failed for ${method}:`, error);
+        throw error;
+    }
+}
+
+async function sendMCPNotification(method, params = {}) {
+    const notification = {
+        jsonrpc: "2.0",
+        method: method,
+        params: params
+    };
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        'mcp-protocol-version': '2025-06-30'
+    };
+
+    if (mcpSessionId) {
+        headers['mcp-session-id'] = mcpSessionId;
+    }
+
+    console.log(`MCP Notification: ${method}`, { params, headers });
+
+    try {
+        const response = await fetch(`${appConfig.mcpServerUrl}/mcp`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(notification)
+        });
+
+        if (!response.ok) {
+            console.warn(`Failed to send MCP notification ${method}:`, response.status, response.statusText);
+        } else {
+            console.log(`MCP notification ${method} sent successfully`);
+        }
+        
+        return response.ok;
+    } catch (error) {
+        console.error(`Failed to send MCP notification ${method}:`, error);
+        return false;
+    }
+}
+
+async function initializeMCP() {
+    try {
+        const result = await makeMCPRequest('initialize', {
+            protocolVersion: '2025-06-30',
+            capabilities: {
+                roots: {
+                    listChanged: false
+                },
+                sampling: {}
+            },
+            clientInfo: {
+                name: 'chattt-client',
+                version: '1.0.0'
+            }
+        });
+
+        // Send initialized notification (required by MCP spec)
+        await sendMCPNotification('notifications/initialized');
+
+        return result;
+    } catch (error) {
+        console.error('Failed to initialize MCP:', error);
+        throw error;
+    }
+}
+
+async function listMCPTools() {
+    return await makeMCPRequest('tools/list');
+}
+
+async function callMCPTool(name, args = {}) {
+    return await makeMCPRequest('tools/call', { name, arguments: args });
+}
+
+async function listMCPResources() {
+    return await makeMCPRequest('resources/list');
+}
+
+async function readMCPResource(uri) {
+    return await makeMCPRequest('resources/read', { uri });
+}
+
+async function listMCPPrompts() {
+    return await makeMCPRequest('prompts/list');
+}
+
+async function getMCPPrompt(name, args = {}) {
+    return await makeMCPRequest('prompts/get', { name, arguments: args });
+}
+
 // Ollama
 
 async function aiChooseTool(message) {
     try {
-        // Fetch all MCP data in parallel with a single /info call
-        const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
-            fetch(`${appConfig.mcpServerUrl}/info`),
-            fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
-            fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
-        ]);
-        
-        if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
-            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+        // Initialize MCP connection if needed
+        if (!mcpSessionId) {
+            await initializeMCP();
         }
 
-        const [infoData, toolsData, resourcesData] = await Promise.all([
-            infoResponse.json(),
-            toolsResponse.json(),
-            resourcesResponse.json()
+        // Fetch tools and resources using MCP JSON-RPC
+        const [toolsData, resourcesData] = await Promise.all([
+            listMCPTools(),
+            listMCPResources()
         ]);
 
         const mcpTools = {
             status: 'connected',
-            serverInfo: infoData,
             tools: toolsData.tools || []
         };
 
         const mcpResources = {
-            status: 'connected',
-            serverInfo: infoData,
+            status: 'connected', 
             resources: resourcesData.resources || []
         };
         
@@ -400,18 +537,8 @@ async function getResourceContent(availableResources) {
     const retrievedResources = [];
     
     for (const resource of availableResources) {
-        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/read`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                uri: resource.uri
-            })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
+        try {
+            const data = await readMCPResource(resource.uri);
             const content = data.contents?.[0]?.text || '';
             
             if (content) {
@@ -421,6 +548,8 @@ async function getResourceContent(availableResources) {
                     content: content.substring(0, 2000) // Limit content length to avoid huge prompts
                 });
             }
+        } catch (error) {
+            console.warn(`Failed to read resource ${resource.uri}:`, error);
         }
     }
     
@@ -434,32 +563,24 @@ async function aiSendMessage(message, args) {
         let responseText = args.response;
 
         if (!responseText) {
-            // Fetch all MCP data in parallel with a single /info call
-            const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
-                fetch(`${appConfig.mcpServerUrl}/info`),
-                fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
-                fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
-            ]);
-            
-            if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
-                throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+            // Initialize MCP connection if needed
+            if (!mcpSessionId) {
+                await initializeMCP();
             }
 
-            const [infoData, toolsData, resourcesData] = await Promise.all([
-                infoResponse.json(),
-                toolsResponse.json(),
-                resourcesResponse.json()
+            // Fetch tools and resources using MCP JSON-RPC
+            const [toolsData, resourcesData] = await Promise.all([
+                listMCPTools(),
+                listMCPResources()
             ]);
 
             const mcpTools = {
                 status: 'connected',
-                serverInfo: infoData,
                 tools: toolsData.tools || []
             };
 
             const mcpResources = {
                 status: 'connected',
-                serverInfo: infoData,
                 resources: resourcesData.resources || []
             };
 
@@ -630,51 +751,51 @@ function removeThinkingMessage() {
 
 // MCP
 
-async function callMCPTool(toolName, args) {
+async function callMCPToolWithLogging(toolName, args) {
     addGameMessage(`MCP call: ${toolName} with arguments: ${JSON.stringify(args)}`);
 
     try {
-        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/call`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                name: toolName,
-                arguments: args
-            })
-        });
+        // Initialize MCP connection if needed
+        if (!mcpSessionId) {
+            await initializeMCP();
+        }
 
-        const toolResult = await response.json();
+        // Validate arguments based on MCP standard
+        const toolResult = await callMCPTool(toolName, args);
         console.log(`MCP TOOL RESPONSE (${toolName}):`);
         console.log(toolResult);
-        addGameMessage(`MCP returned: ${JSON.stringify(toolResult)}`);
+        
+        // Handle the MCP standard response format
+        if (toolResult && toolResult.content) {
+            const resultText = toolResult.content
+                .filter(item => item.type === 'text')
+                .map(item => item.text)
+                .join(' ');
+            addGameMessage(`MCP returned: ${resultText}`);
+        } else {
+            addGameMessage(`MCP returned: ${JSON.stringify(toolResult)}`);
+        }
 
-        if (response.ok) return toolResult;
-
-        throw new Error(`MCP API error: ${response.status}`);
+        return toolResult;
     }
     catch (error) {
         console.error(`MCP tool ${toolName} call failed:`, error.message);
+        addGameMessage(`❌ MCP tool ${toolName} failed: ${error.message}`);
         throw error;
     }
 }
 
 async function getMCPCapabilities() {
     try {
-        const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
-        const toolsResponse = await fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`);
-        
-        if (!infoResponse.ok || !toolsResponse.ok) {
-            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status}`);
+        // Initialize MCP connection if needed
+        if (!mcpSessionId) {
+            await initializeMCP();
         }
 
-        const infoData = await infoResponse.json();
-        const toolsData = await toolsResponse.json();
+        const toolsData = await listMCPTools();
 
         return {
             status: 'connected',
-            serverInfo: infoData,
             tools: toolsData.tools || []
         };
     }
@@ -690,26 +811,22 @@ async function getMCPCapabilities() {
 
 async function getMCPResources() {
     try {
-        const infoResponse = await fetch(`${appConfig.mcpServerUrl}/info`);
-        const resourcesResponse = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`);
-
-        if (!infoResponse.ok || !resourcesResponse.ok) {
-            throw new Error(`HTTP ${infoResponse.status || resourcesResponse.status}`);
+        // Initialize MCP connection if needed
+        if (!mcpSessionId) {
+            await initializeMCP();
         }
 
-        const infoData = await infoResponse.json();
-        const resourcesData = await resourcesResponse.json();
+        const resourcesData = await listMCPResources();
 
         return {
             status: 'connected',
-            serverInfo: infoData,
             resources: resourcesData.resources || []
         };
     }
     catch (error) {
         console.error('Error getting MCP resources:', error);
         return { 
-            tools: [], 
+            resources: [], 
             status: 'error',
             error: error.message
         };
@@ -718,35 +835,42 @@ async function getMCPResources() {
 
 async function checkMCPStatus() {
     try {
-        // Fetch all MCP data in parallel with a single /info call
-        const [infoResponse, toolsResponse, resourcesResponse] = await Promise.all([
-            fetch(`${appConfig.mcpServerUrl}/info`),
-            fetch(`${appConfig.mcpServerUrl}/mcp/tools/list`),
-            fetch(`${appConfig.mcpServerUrl}/mcp/resources/list`)
-        ]);
+        console.log('Checking MCP status...');
         
-        if (!infoResponse.ok || !toolsResponse.ok || !resourcesResponse.ok) {
-            throw new Error(`HTTP ${infoResponse.status || toolsResponse.status || resourcesResponse.status}`);
+        // Initialize MCP connection if needed
+        if (!mcpSessionId) {
+            console.log('No MCP session, initializing...');
+            await initializeMCP();
         }
 
-        const [infoData, toolsData, resourcesData] = await Promise.all([
-            infoResponse.json(),
-            toolsResponse.json(),
-            resourcesResponse.json()
+        // Fetch tools and resources using MCP JSON-RPC
+        console.log('Fetching MCP capabilities...');
+        const [toolsData, resourcesData] = await Promise.all([
+            listMCPTools(),
+            listMCPResources()
         ]);
+
+        // Validate response format according to MCP standard
+        if (!toolsData || !Array.isArray(toolsData.tools)) {
+            throw new Error('Invalid tools response format');
+        }
+        
+        if (!resourcesData || !Array.isArray(resourcesData.resources)) {
+            throw new Error('Invalid resources response format');
+        }
 
         const capabilities = {
             status: 'connected',
-            serverInfo: infoData,
-            tools: toolsData.tools || []
+            tools: toolsData.tools
         };
 
         const resources = {
             status: 'connected',
-            serverInfo: infoData,
-            resources: resourcesData.resources || []
+            resources: resourcesData.resources
         };
 
+        console.log(`MCP Status: Connected with ${capabilities.tools.length} tools and ${resources.resources.length} resources`);
+        
         updateMCPStatus(capabilities.status, { ...capabilities, resources: resources.resources });
         updateToolsPanel(capabilities.tools);
         updateResourcesPanel(resources.resources);
@@ -782,7 +906,7 @@ async function handleNewGameRequest() {
     const mcp_args = {};
 
     try {
-        const toolResult = await callMCPTool('new_game', mcp_args);
+        const toolResult = await callMCPToolWithLogging('new_game', mcp_args);
 
         if (toolResult && !toolResult.isError) {
             resetGame();
@@ -813,7 +937,7 @@ async function handleBestMoveRequest(args) {
     };
 
     try {
-        const toolResult = await callMCPTool('best_move', mpc_args);
+        const toolResult = await callMCPToolWithLogging('best_move', mpc_args);
    
         if (!toolResult) {
             return addBotMessage(`Error calling MCP random_move for ${mpc_args.player}.`);
@@ -854,7 +978,7 @@ async function handleRandomMoveRequest(args) {
     };
 
     try {
-        const toolResult = await callMCPTool('random_move', mpc_args);
+        const toolResult = await callMCPToolWithLogging('random_move', mpc_args);
 
         if (!toolResult) {
             return addBotMessage(`Error calling MCP random_move for ${mpc_args.player}.`);
@@ -894,7 +1018,7 @@ async function handlePlayMoveRequest(args) {
     };
 
     try {
-        const toolResult = await callMCPTool('play_move', mpc_args);
+        const toolResult = await callMCPToolWithLogging('play_move', mpc_args);
 
         if (!toolResult) {
             return addBotMessage(`Error calling MCP play_move ${args.position} for ${mpc_args.player}.`);
@@ -944,6 +1068,8 @@ async function handleMcpServerUpdate() {
     }
 
     appConfig.mcpServerUrl = newServerUrl;
+    // Reset session when server changes
+    mcpSessionId = null;
     addGameMessage(`🔧 MCP server updated to: ${newServerUrl}`);
     await checkMCPStatus();
 }
@@ -1515,27 +1641,13 @@ async function showResourceContent(uri, name) {
         modalBody.innerHTML = '<div class="loading">Loading resource content...</div>';
         modal.style.display = 'block';
         
-        // Fetch resource content using standard MCP endpoint
-        const response = await fetch(`${appConfig.mcpServerUrl}/mcp/resources/read`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                uri: uri
-            })
-        });
+        // Fetch resource content using MCP JSON-RPC
+        const data = await readMCPResource(uri);
+        const content = data.contents?.[0]?.text || 'No content available';
         
-        if (response.ok) {
-            const data = await response.json();
-            const content = data.contents?.[0]?.text || 'No content available';
-            
-            // Convert markdown-style content to HTML
-            const htmlContent = formatResourceContent(content);
-            modalBody.innerHTML = htmlContent;
-        } else {
-            modalBody.innerHTML = '<div class="error">Failed to load resource content</div>';
-        }
+        // Convert markdown-style content to HTML
+        const htmlContent = formatResourceContent(content);
+        modalBody.innerHTML = htmlContent;
     } catch (error) {
         console.error('Error loading resource content:', error);
         const modalBody = document.querySelector('.resource-modal-body');

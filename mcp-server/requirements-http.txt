@@ -1,7 +1,13 @@
-# HTTP server dependencies for web interface
-# Extends requirements.txt with web-specific packages
+# HTTP server dependencies for MCP HTTP transport
+# Extends requirements.txt with MCP HTTP transport packages
 -r requirements.txt
 
+# MCP HTTP transport dependencies
+sse-starlette>=1.8.0
+starlette>=0.32.0
+anyio>=4.0.0
+
+# Legacy web interface dependencies (for existing http_server.py)
 fastapi>=0.116.0
 uvicorn>=0.35.0
 pydantic>=2.11.0
