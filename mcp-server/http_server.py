@@ -261,6 +261,11 @@ app.add_middleware(
 @app.get("/info")
 async def get_server_info():
     """Get server information - for backward compatibility with existing clients."""
+    # Get available capabilities
+    tools = mcp_client.get_available_tools()
+    resources = mcp_client.get_available_resources()
+    prompts = mcp_client.get_available_prompts()
+    
     return {
         "name": "chattt-mcp-server",
         "version": "1.0.0",
@@ -277,26 +282,56 @@ async def get_server_info():
             "resource_streaming": True,
             "list_streaming": True
         },
-        "streaming_endpoints": {
-            "tools": [
-                "/mcp/tools/call/stream",
-                "/mcp/tools/call/stream-json",
-                "/mcp/tools/call/stream-sse/{tool_name}",
-                "/mcp/tools/list/stream"
+        "available_capabilities": {
+            "tools": {
+                "count": len(tools),
+                "names": [tool["name"] for tool in tools]
+            },
+            "resources": {
+                "count": len(resources),
+                "uris": [resource["uri"] for resource in resources]
+            },
+            "prompts": {
+                "count": len(prompts),
+                "names": [prompt["name"] for prompt in prompts]
+            }
+        },
+        "endpoints": {
+            "standard": [
+                "/mcp/initialize",
+                "/mcp/tools/list",
+                "/mcp/tools/call",
+                "/mcp/resources/list",
+                "/mcp/resources/read",
+                "/mcp/prompts/list",
+                "/mcp/prompts/get",
+                "/mcp/logging/setLevel"
             ],
-            "resources": [
-                "/mcp/resources/read/stream",
-                "/mcp/resources/read/stream/{path:path}",
-                "/mcp/resources/list/stream"
-            ],
-            "prompts": [
-                "/mcp/prompts/list/stream"
-            ],
-            "websockets": [
-                "/mcp/ws",
-                "/mcp/ws/tools/{tool_name}",
-                "/mcp/ws/resources/list",
-                "/mcp/ws/resources/read"
+            "streaming": {
+                "tools": [
+                    "/mcp/tools/call/stream",
+                    "/mcp/tools/call/stream-json",
+                    "/mcp/tools/call/stream-sse/{tool_name}",
+                    "/mcp/tools/list/stream"
+                ],
+                "resources": [
+                    "/mcp/resources/read/stream",
+                    "/mcp/resources/read/stream/{path:path}",
+                    "/mcp/resources/list/stream"
+                ],
+                "prompts": [
+                    "/mcp/prompts/list/stream"
+                ],
+                "websockets": [
+                    "/mcp/ws",
+                    "/mcp/ws/tools/{tool_name}",
+                    "/mcp/ws/resources/list",
+                    "/mcp/ws/resources/read"
+                ]
+            },
+            "utility": [
+                "/info",
+                "/mcp/ping"
             ]
         },
         "protocolVersion": "2024-11-05",
@@ -310,21 +345,45 @@ async def get_server_info():
 @app.post("/mcp/initialize")
 async def mcp_initialize():
     """MCP session initialization endpoint."""
+    # Get available capabilities for detailed response
+    tools = mcp_client.get_available_tools()
+    resources = mcp_client.get_available_resources()
+    prompts = mcp_client.get_available_prompts()
+    
     return {
         "protocolVersion": "2024-11-05",
         "capabilities": {
-            "tools": True,
-            "resources": True,
-            "prompts": True,
-            "logging": True,
-            "streaming": True,
-            "websockets": True,
-            "resource_streaming": True,
-            "list_streaming": True
+            "tools": {
+                "listChanged": True,
+                "call": True
+            },
+            "resources": {
+                "subscribe": True,
+                "listChanged": True,
+                "read": True
+            },
+            "prompts": {
+                "listChanged": True,
+                "get": True
+            },
+            "logging": {
+                "setLevel": True
+            },
+            "experimental": {
+                "streaming": True,
+                "websockets": True,
+                "resource_streaming": True,
+                "list_streaming": True
+            }
         },
         "serverInfo": {
             "name": "chattt-mcp-server",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "description": "MCP server for ChatTTT game with AI strategy",
+            "homepage": "https://github.com/paulyun-commits/chat-ttt-mcp",
+            "tools_count": len(tools),
+            "resources_count": len(resources),
+            "prompts_count": len(prompts)
         }
     }
 

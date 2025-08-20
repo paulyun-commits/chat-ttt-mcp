@@ -74,7 +74,7 @@ class MCPHttpServer {
                         console.log('  GET  /mcp/tools - List available tools');
                         console.log('  POST /mcp/tools/call - Call a tool');
                         console.log('  GET  /mcp/resources - List available resources');
-                        console.log('  POST /mcp/resources/content - Read resource content');
+                        console.log('  POST /mcp/resources/read - Read resource content');
                         console.log('  GET  /mcp/prompts - List available prompts');
                         console.log('  POST /mcp/prompts/get - Get a prompt');
                         console.log('  GET  /mcp/ping - Ping test');

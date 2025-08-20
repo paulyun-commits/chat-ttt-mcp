@@ -82,7 +82,7 @@ class MCPStdioBridge {
         });
 
         // Get resource content
-        app.post('/mcp/resources/content', async (req, res) => {
+        app.post('/mcp/resources/read', async (req, res) => {
             try {
                 const { uri } = req.body;
                 
